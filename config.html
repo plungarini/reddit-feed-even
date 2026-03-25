@@ -265,6 +265,57 @@
       display: none !important;
     }
 
+    /* Toast Notifications */
+    .toast-container {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .toast {
+      background: rgba(34, 197, 94, 0.95);
+      color: #fff;
+      padding: 16px 24px;
+      border-radius: 12px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 500;
+      animation: slideIn 0.3s ease, fadeOut 0.3s ease 2.7s;
+      min-width: 280px;
+    }
+
+    .toast.error {
+      background: rgba(239, 68, 68, 0.95);
+    }
+
+    .toast.info {
+      background: rgba(59, 130, 246, 0.95);
+    }
+
+    @keyframes slideIn {
+      from {
+        transform: translateX(100%);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+
+    @keyframes fadeOut {
+      to {
+        opacity: 0;
+        transform: translateX(10px);
+      }
+    }
+
     footer {
       text-align: center;
       margin-top: 40px;
@@ -474,6 +525,9 @@
     </footer>
   </div>
 
+  <!-- Toast Notifications Container -->
+  <div class="toast-container" id="toast-container"></div>
+
   <script>
     // Configuration storage key
     const CONFIG_KEY = 'reddit-client-config';
@@ -492,6 +546,23 @@
         intervalMinutes: 30,
       },
     };
+
+    // Toast notification system
+    function showToast(message, type = 'success') {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      toast.className = `toast ${type}`;
+      
+      const icon = type === 'success' ? '✅' : type === 'error' ? '❌' : 'ℹ️';
+      toast.innerHTML = `<span style="font-size: 20px;">${icon}</span><span>${message}</span>`;
+      
+      container.appendChild(toast);
+      
+      // Remove after 3 seconds
+      setTimeout(() => {
+        toast.remove();
+      }, 3000);
+    }
 
     // Load saved settings on page load
     window.addEventListener('DOMContentLoaded', () => {
@@ -531,7 +602,7 @@
       const userAgent = document.getElementById('user-agent').value.trim() || 'reddit-client-even/1.0';
 
       if (!token) {
-        showStatus('Please enter your Reddit token', 'error');
+        showToast('Please enter your Reddit token', 'error');
         return;
       }
 
@@ -542,7 +613,7 @@
       };
 
       localStorage.setItem(AUTH_KEY, JSON.stringify(auth));
-      showStatus('Authentication saved successfully!', 'success');
+      showToast('Authentication saved successfully!');
       updateAuthStatus();
     }
 
@@ -576,7 +647,7 @@
       };
 
       localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
-      showStatus('All settings saved successfully!', 'success');
+      showToast('All settings saved successfully!');
       updateAuthStatus();
     }
 
@@ -591,7 +662,7 @@
         document.getElementById('reddit-token').value = '';
         loadSettings();
         
-        showStatus('All data cleared', 'pending');
+        showToast('All data cleared', 'info');
         updateAuthStatus();
       }
     }

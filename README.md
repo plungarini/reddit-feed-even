@@ -91,15 +91,70 @@ The dev server will start at `http://localhost:5173`.
 
 ### Running on G2 Glasses
 
+There are **three ways** to load the app on your G2 glasses:
+
+#### Option 1: GitHub Pages (Production) - Recommended
+
+The easiest way - no setup required:
+
+1. Open the **Even app** on your iPhone
+2. Tap **"Add App"** or **"+"**
+3. Enter this URL: `https://plungarini.github.io/reddit-client-even/`
+4. The app will load on your glasses!
+
+Or use the QR code generator:
+```bash
+# In the repo directory
+npx evenhub qr --url "https://plungarini.github.io/reddit-client-even/"
+```
+
+#### Option 2: Local Development
+
+For testing changes on your local machine:
+
 ```bash
 # Terminal 1: Start dev server
 npm run dev
 
-# Terminal 2: Generate QR code
+# Terminal 2: Get your local IP and generate QR
 npm run qr
+# OR manually:
+npx evenhub qr --http --port 5173
 ```
 
-Scan the QR code with the Even app to load the app on your glasses.
+**Important:** Your iPhone and computer must be on the **same WiFi network**.
+
+#### Option 3: Custom Hosting
+
+Host on your own server (Vercel, Netlify, etc.):
+
+```bash
+# Build the app
+npm run build
+
+# Deploy the dist/ folder to your host
+# Then use your URL:
+npx evenhub qr --url "https://your-domain.com/"
+```
+
+### QR Code Not Working?
+
+If the QR code doesn't scan or the app won't load:
+
+1. **Check the URL format** - Even Hub requires a full URL with `https://`
+2. **Verify network access** - iPhone must reach the URL
+3. **Try manual entry** - Type the URL directly in the Even app instead of QR
+4. **Check for typos** - URLs are case-sensitive
+
+**Production URL:**
+```
+https://plungarini.github.io/reddit-client-even/
+```
+
+**Staging URL (for testing):**
+```
+https://plungarini.github.io/reddit-client-even/staging/
+```
 
 ### Building for Production
 
@@ -280,11 +335,29 @@ The app automatically throttles requests when approaching limits based on respon
 
 ## Troubleshooting
 
+### "Open Configuration" Button Not Working
+
+If clicking "Open Configuration" doesn't navigate to the config page:
+
+1. **You're on GitHub Pages** - The config page is at: `https://plungarini.github.io/reddit-client-even/config.html`
+   - Manually navigate to this URL in your browser
+   - Or tap and hold the button, then select "Open in New Tab"
+
+2. **You're on local development** - Make sure both `index.html` and `config.html` are in the same directory
+   - Try: `http://localhost:5173/config.html`
+
+3. **Try the direct link:**
+   - Production: https://plungarini.github.io/reddit-client-even/config.html
+   - Staging: https://plungarini.github.io/reddit-client-even/staging/config.html
+   - Local: http://localhost:5173/config.html
+
 ### "Setup Required" message on G2
 
 1. Visit the config page on your iPhone's Safari browser
 2. Enter your Reddit token and save
 3. Re-open the Reddit Client app on G2
+
+**Important:** The configuration is saved to your iPhone's Safari localStorage. If you use a different browser (Chrome, Firefox), the G2 app won't see the configuration. Always use Safari on iOS.
 
 ### Authentication Issues
 
