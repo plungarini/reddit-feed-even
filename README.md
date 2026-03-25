@@ -114,11 +114,28 @@ This creates a `dist/` folder with the built app. The config page (`config.html`
 1. Push your code to GitHub
 2. Go to **Settings** → **Pages** in your repo
 3. Select **GitHub Actions** as the source
-4. The workflow (`.github/workflows/deploy.yml`) will auto-deploy on push to main
+4. The workflow (`.github/workflows/deploy.yml`) will auto-deploy on push
 
 Your app will be available at:
-- App: `https://yourusername.github.io/reddit-client-even/`
-- Config: `https://yourusername.github.io/reddit-client-even/config.html`
+- **Production**: `https://plungarini.github.io/reddit-client-even/` (from `master` branch)
+- **Staging**: `https://plungarini.github.io/reddit-client-even/staging/` (from `develop` branch)
+- **Config**: `https://plungarini.github.io/reddit-client-even/config.html`
+
+### Environments
+
+We maintain two environments for testing and production:
+
+| Environment | Branch | URL | Purpose |
+|-------------|--------|-----|---------|
+| Production | `master` | `/` | Stable releases for end users |
+| Staging | `develop` | `/staging/` | Testing new features before release |
+
+**Deployment Flow:**
+1. Push to `develop` branch → Auto-deploys to staging
+2. Test on staging environment
+3. Merge to `master` branch → Auto-deploys to production
+
+The staging environment uses the same localStorage as production, so you can test with your existing configuration.
 
 ## Architecture
 
