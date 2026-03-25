@@ -162,3 +162,6 @@ export class SyncEngine {
     }
   }
 }
+
+// Re-export for convenience
+export type { SyncResult } from '../../types';

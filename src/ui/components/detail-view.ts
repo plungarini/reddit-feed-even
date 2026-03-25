@@ -36,7 +36,7 @@ export class DetailView {
           height: 288,
           borderWidth: 1,
           borderColor: 5,
-          borderRdaius: 4,
+          borderRadius: 4,
           paddingLength: 8,
           containerID: 1,
           containerName: 'detail',

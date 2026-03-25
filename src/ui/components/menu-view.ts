@@ -43,7 +43,7 @@ export class MenuView {
           height: 288,
           borderWidth: 1,
           borderColor: 13,
-          borderRdaius: 6,
+          borderRadius: 6,
           paddingLength: 5,
           containerID: 1,
           containerName: 'menu',

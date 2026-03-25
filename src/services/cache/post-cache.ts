@@ -38,7 +38,7 @@ export class PostCache {
    * Generate a unique cache key for a feed config
    */
   generateKey(config: FeedConfig): string {
-    const parts = [config.endpoint];
+    const parts: string[] = [config.endpoint];
     if (config.subreddit) parts.push(`r:${config.subreddit}`);
     if (config.sort) parts.push(`sort:${config.sort}`);
     if (config.time) parts.push(`time:${config.time}`);
@@ -76,7 +76,9 @@ export class PostCache {
     // Evict oldest if at capacity
     if (this.memoryCache.size >= this.maxMemoryEntries) {
       const oldestKey = this.memoryCache.keys().next().value;
-      this.memoryCache.delete(oldestKey);
+      if (oldestKey) {
+        this.memoryCache.delete(oldestKey);
+      }
     }
 
     // Add to memory cache

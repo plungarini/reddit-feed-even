@@ -5,7 +5,7 @@
  * Handles start/stop and interval changes.
  */
 
-import { SyncEngine } from './sync-engine';
+import { SyncEngine, SyncResult } from './sync-engine';
 import { FeedConfig } from '../../types';
 
 export class SyncScheduler {
@@ -93,7 +93,7 @@ export class SyncScheduler {
   /**
    * Trigger immediate sync
    */
-  async triggerNow(): Promise<import('./sync-engine').SyncResult | null> {
+  async triggerNow(): Promise<SyncResult | null> {
     if (this.feedConfig) {
       return this.engine.sync(this.feedConfig);
     }
