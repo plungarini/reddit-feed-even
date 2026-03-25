@@ -2,11 +2,20 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, master, develop ]
   workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -15,14 +24,26 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  build-and-deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine environment
+        id: env
+        run: |
+          if [ "${{ github.event.inputs.environment }}" != "" ]; then
+            echo "environment=${{ github.event.inputs.environment }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.ref_name }}" == "master" ] || [ "${{ github.ref_name }}" == "main" ]; then
+            echo "environment=production" >> $GITHUB_OUTPUT
+          elif [ "${{ github.ref_name }}" == "develop" ]; then
+            echo "environment=staging" >> $GITHUB_OUTPUT
+          else
+            echo "environment=staging" >> $GITHUB_OUTPUT
+          fi
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -33,22 +54,40 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Type check
+        run: npm run typecheck
+
       - name: Build app
         run: npm run build
+        env:
+          NODE_ENV: ${{ steps.env.outputs.environment == 'production' && 'production' || 'development' }}
 
-      - name: Copy config page to dist
+      - name: Copy static files
         run: |
           cp config.html dist/
           cp -r public dist/ 2>/dev/null || true
 
-      - name: Setup Pages
-        uses: actions/configure-pages@v4
-
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: './dist'
+      - name: Add version info
+        run: |
+          echo '{
+            "environment": "${{ steps.env.outputs.environment }}",
+            "branch": "${{ github.ref_name }}",
+            "commit": "${{ github.sha }}",
+            "buildTime": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"
+          }' > dist/version.json
 
       - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          destination_dir: ${{ steps.env.outputs.environment == 'staging' && 'staging' || '' }}
+          keep_files: true
+
+      - name: Output deployment URL
+        run: |
+          if [ "${{ steps.env.outputs.environment }}" == "production" ]; then
+            echo "🚀 Production deployed to: https://${{ github.repository_owner }}.github.io/reddit-client-even/"
+          else
+            echo "🧪 Staging deployed to: https://${{ github.repository_owner }}.github.io/reddit-client-even/staging/"
+          fi
