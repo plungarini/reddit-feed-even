@@ -18,13 +18,13 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  build-and-deploy:
+  # Deploy production from master/main branch
+  deploy-production:
+    if: github.ref_name == 'master' || github.ref_name == 'main'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -38,50 +38,67 @@ jobs:
       - name: Type check
         run: npm run typecheck
 
-      - name: Determine environment
-        id: env
-        run: |
-          if [ "${{ github.ref_name }}" == "master" ] || [ "${{ github.ref_name }}" == "main" ]; then
-            echo "environment=production" >> $GITHUB_OUTPUT
-            echo "deploy_dir=./dist" >> $GITHUB_OUTPUT
-          else
-            echo "environment=staging" >> $GITHUB_OUTPUT
-            echo "deploy_dir=./dist/staging" >> $GITHUB_OUTPUT
-          fi
-
       - name: Build app
         run: npm run build
         env:
-          NODE_ENV: ${{ steps.env.outputs.environment == 'production' && 'production' || 'development' }}
+          NODE_ENV: production
 
-      - name: Prepare deployment
+      - name: Add static files
         run: |
-          if [ "${{ steps.env.outputs.environment }}" == "staging" ]; then
-            # For staging, move build to staging subdirectory
-            mkdir -p dist/staging
-            cp -r dist/assets dist/staging/ 2>/dev/null || true
-            cp dist/index.html dist/staging/
-            cp config.html dist/staging/
-            cp -r public dist/staging/ 2>/dev/null || true
-            echo '{"environment":"staging","branch":"${{ github.ref_name }}","commit":"${{ github.sha }}"}' > dist/staging/version.json
-          else
-            # For production, keep at root
-            cp config.html dist/
-            cp -r public dist/ 2>/dev/null || true
-            echo '{"environment":"production","branch":"${{ github.ref_name }}","commit":"${{ github.sha }}"}' > dist/version.json
-          fi
+          cp config.html dist/
+          cp -r public dist/ 2>/dev/null || true
+          echo '{"environment":"production","branch":"${{ github.ref_name }}","commit":"${{ github.sha }}"}' > dist/version.json
 
-      - name: Deploy to GitHub Pages
+      - name: Deploy Production
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./dist
+          destination_dir: .
           keep_files: true
 
-      - name: Output deployment URL
+      - name: Output URL
+        run: echo "🚀 Production: https://${{ github.repository_owner }}.github.io/reddit-client-even/"
+
+  # Deploy staging from develop branch
+  deploy-staging:
+    if: github.ref_name == 'develop'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Build app
+        run: npm run build
+        env:
+          NODE_ENV: development
+          BASE_URL: /reddit-client-even/staging/
+
+      - name: Add static files
         run: |
-          if [ "${{ steps.env.outputs.environment }}" == "production" ]; then
-            echo "🚀 Production: https://${{ github.repository_owner }}.github.io/reddit-client-even/"
-          else
-            echo "🧪 Staging: https://${{ github.repository_owner }}.github.io/reddit-client-even/staging/"
-          fi
+          cp config.html dist/
+          cp -r public dist/ 2>/dev/null || true
+          echo '{"environment":"staging","branch":"${{ github.ref_name }}","commit":"${{ github.sha }}"}' > dist/version.json
+
+      - name: Deploy Staging
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          destination_dir: staging
+          keep_files: true
+
+      - name: Output URL
+        run: echo "🧪 Staging: https://${{ github.repository_owner }}.github.io/reddit-client-even/staging/"
