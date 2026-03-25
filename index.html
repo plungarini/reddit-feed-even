@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Reddit Client for Even Realities G2 Smart Glasses">
+  <title>Reddit Client</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      color: #fff;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 20px;
+      text-align: center;
+    }
+
+    .logo {
+      width: 100px;
+      height: 100px;
+      background: linear-gradient(135deg, #ff4500 0%, #ff6b35 100%);
+      border-radius: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 48px;
+      margin-bottom: 24px;
+      box-shadow: 0 20px 60px rgba(255, 69, 0, 0.3);
+      animation: float 3s ease-in-out infinite;
+    }
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-10px); }
+    }
+
+    h1 {
+      font-size: 32px;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+
+    .subtitle {
+      color: #8892b0;
+      font-size: 16px;
+      margin-bottom: 40px;
+    }
+
+    .status {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      padding: 20px 32px;
+      margin-bottom: 32px;
+      max-width: 400px;
+    }
+
+    .status.loading {
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 0.5; }
+      50% { opacity: 1; }
+    }
+
+    .status-icon {
+      font-size: 32px;
+      margin-bottom: 12px;
+    }
+
+    .status-text {
+      font-size: 14px;
+      color: #ccd6f6;
+    }
+
+    .setup-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: linear-gradient(135deg, #ff4500 0%, #ff6b35 100%);
+      color: #fff;
+      text-decoration: none;
+      padding: 16px 32px;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 16px;
+      transition: all 0.2s;
+      margin-bottom: 16px;
+    }
+
+    .setup-link:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 30px rgba(255, 69, 0, 0.3);
+    }
+
+    .help-text {
+      color: #8892b0;
+      font-size: 13px;
+      max-width: 400px;
+      line-height: 1.6;
+    }
+
+    .features {
+      display: flex;
+      gap: 24px;
+      margin-top: 48px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .feature {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      color: #8892b0;
+      font-size: 13px;
+    }
+
+    .feature-icon {
+      font-size: 24px;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+  </style>
+  <script type="module" crossorigin src="/assets/index-U20UVF_T.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/even-hub-bAo2QaA7.js">
+</head>
+<body>
+  <div class="logo">🤖</div>
+  <h1>Reddit Client</h1>
+  <p class="subtitle">For Even Realities G2 Smart Glasses</p>
+
+  <div id="loading-status" class="status loading">
+    <div class="status-icon">⏳</div>
+    <div class="status-text">Initializing...</div>
+  </div>
+
+  <div id="setup-required" class="hidden">
+    <a href="config.html" class="setup-link">
+      ⚙️ Open Configuration
+    </a>
+    <p class="help-text">
+      Configure your Reddit authentication and preferences.<br>
+      Your settings will be saved locally on this device.
+    </p>
+  </div>
+
+  <div id="ready-status" class="hidden">
+    <div class="status">
+      <div class="status-icon">✅</div>
+      <div class="status-text">Ready! Loading your feed...</div>
+    </div>
+    <a href="config.html" class="setup-link" style="background: rgba(255,255,255,0.1); font-size: 14px; padding: 12px 24px;">
+      ⚙️ Change Settings
+    </a>
+  </div>
+
+  <div class="features">
+    <div class="feature">
+      <span class="feature-icon">📱</span>
+      <span>All Reddit Feeds</span>
+    </div>
+    <div class="feature">
+      <span class="feature-icon">💬</span>
+      <span>Read Comments</span>
+    </div>
+    <div class="feature">
+      <span class="feature-icon">▲</span>
+      <span>Vote & Save</span>
+    </div>
+    <div class="feature">
+      <span class="feature-icon">🔄</span>
+      <span>Auto-Refresh</span>
+    </div>
+  </div>
+
+  <script>
+    // Check configuration status
+    (function() {
+      const AUTH_KEY = 'reddit-client-auth';
+      const auth = localStorage.getItem(AUTH_KEY);
+      const hasAuth = auth && JSON.parse(auth).tokenV2;
+
+      const loadingEl = document.getElementById('loading-status');
+      const setupEl = document.getElementById('setup-required');
+      const readyEl = document.getElementById('ready-status');
+
+      setTimeout(() => {
+        loadingEl.classList.add('hidden');
+        
+        if (hasAuth) {
+          readyEl.classList.remove('hidden');
+        } else {
+          setupEl.classList.remove('hidden');
+        }
+      }, 1500);
+    })();
+  </script>
+
+</body>
+</html>

@@ -1,6 +1,1 @@
-{
-  "environment": "staging",
-  "branch": "develop",
-  "commit": "f139b9c23499b00cb8b9449ad85a93301538f397",
-  "buildTime": "2026-03-25T18:45:25Z"
-}
+{"environment":"staging","branch":"develop","commit":"87247f96490682281a7b32ac1ea35d4d4759a142"}
