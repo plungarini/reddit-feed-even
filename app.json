@@ -1,0 +1,14 @@
+{
+  "package_id": "com.plungarini.redditclient",
+  "edition": "202601",
+  "name": "Reddit Client",
+  "version": "1.0.0",
+  "min_app_version": "0.1.0",
+  "tagline": "Browse Reddit on your G2 glasses",
+  "description": "A full-featured Reddit client for Even Realities G2 smart glasses. Browse feeds, read comments, upvote/downvote posts with customizable endpoints and automatic background sync.",
+  "author": "Pietro Lungarini",
+  "entrypoint": "index.html",
+  "permissions": {
+    "network": ["reddit.com", "www.reddit.com", "old.reddit.com"]
+  }
+}
