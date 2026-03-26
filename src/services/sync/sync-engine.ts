@@ -71,7 +71,7 @@ export class SyncEngine {
       console.log('[SyncEngine] Starting sync...');
 
       // Fetch fresh posts
-      const freshPosts = await this.client.fetchFeed(feedConfig);
+      const { posts: freshPosts } = await this.client.fetchFeed(feedConfig);
       console.log(`[SyncEngine] Fetched ${freshPosts.length} posts`);
 
       // Get existing cached posts for this feed

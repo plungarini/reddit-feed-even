@@ -32,15 +32,9 @@ export const DEFAULT_CACHE: CacheConfig = {
 };
 
 export const DEFAULT_UI: UIConfig = {
-  showThumbnails: false, // G2 has limited image support
+  showThumbnails: false,
   compactView: true,
   defaultSort: 'hot',
-  gestures: {
-    swipeForward: 'next',
-    swipeBackward: 'prev',
-    singleTap: 'open',
-    doubleTap: 'back',
-  },
 };
 
 export const DEFAULT_CONFIG: AppConfig = {
@@ -69,10 +63,10 @@ export const ENDPOINTS: Record<string, EndpointDefinition> = {
   best: {
     name: 'Best',
     path: '/best.json',
-    requiresAuth: true,
+    requiresAuth: false,
     supportsSort: false,
     supportsTime: false,
-    description: 'Personalized best feed (requires login)',
+    description: 'Personalized best feed (better with auth)',
   },
   hot: {
     name: 'Hot',

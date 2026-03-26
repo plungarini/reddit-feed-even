@@ -201,7 +201,7 @@ export class PostCache {
     for (const entry of this.memoryCache.values()) {
       const post = entry.posts.find(p => p.id === postId);
       if (post) {
-        post.interaction = action as any;
+        // interaction tracking removed
         break;
       }
     }
