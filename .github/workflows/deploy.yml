@@ -46,7 +46,6 @@ jobs:
 
       - name: Add static files
         run: |
-          cp config.html dist/
           cp -r public dist/ 2>/dev/null || true
           echo '{"environment":"production","branch":"${{ github.ref_name }}","commit":"${{ github.sha }}"}' > dist/version.json
 
@@ -93,7 +92,6 @@ jobs:
 
       - name: Add static files
         run: |
-          cp config.html dist/
           cp -r public dist/ 2>/dev/null || true
           echo '{"environment":"staging","branch":"${{ github.ref_name }}","commit":"${{ github.sha }}"}' > dist/version.json
 
