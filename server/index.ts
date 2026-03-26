@@ -21,7 +21,7 @@ app.use((req, _res, next) => {
 
 // ─── Routes ──────────────────────────────────────────────────────────────────
 app.use('/api/health', healthRouter);
-app.use('/api', redditRouter); // This handles /api/test-auth and /api/reddit/*
+app.use('/api', redditRouter);
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 app.listen(PORT, '0.0.0.0', () => {
