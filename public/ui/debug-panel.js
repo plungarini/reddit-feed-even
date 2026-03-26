@@ -15,6 +15,14 @@ function getBaseUrl() {
 }
 
 function serverBase() {
+	const auth = JSON.parse(localStorage.getItem(AUTH_KEY) || '{}');
+	if (auth.proxyUrl) {
+		return auth.proxyUrl.endsWith('/') ? auth.proxyUrl.slice(0, -1) : auth.proxyUrl;
+	}
+	const env = globalThis.__REDDIT_CLIENT_ENV__ || {};
+	if (env.REDDIT_PROXY_URL) {
+		return env.REDDIT_PROXY_URL.endsWith('/') ? env.REDDIT_PROXY_URL.slice(0, -1) : env.REDDIT_PROXY_URL;
+	}
 	return 'http://' + globalThis.location.hostname + ':3001';
 }
 
@@ -201,9 +209,15 @@ function loadSettings() {
 		const cfg = JSON.parse(localStorage.getItem(CONFIG_KEY) || '{}');
 		if (auth.tokenV2) document.getElementById('input-token').value = auth.tokenV2;
 		if (auth.session) document.getElementById('input-session').value = auth.session;
+		if (auth.proxyUrl) {
+			document.getElementById('input-proxy').value = auth.proxyUrl;
+		} else {
+			const env = globalThis.__REDDIT_CLIENT_ENV__ || {};
+			if (env.REDDIT_PROXY_URL) document.getElementById('input-proxy').value = env.REDDIT_PROXY_URL;
+		}
 		if (cfg.feed) {
 			document.getElementById('input-feed').value = cfg.feed.endpoint || 'hot';
-			document.getElementById('input-subreddit').value = cfg.feed.subreddit || '';
+			/* document.getElementById('input-subreddit').value = cfg.feed.subreddit || ''; */
 		}
 		Object.assign(globalThis.__appState, { hasAuth: !!(auth.tokenV2 && auth.session) });
 	} catch (e) {
@@ -212,23 +226,25 @@ function loadSettings() {
 }
 
 function saveSettings() {
-	const token = document.getElementById('input-token').value.trim();
-	const session = document.getElementById('input-session').value.trim();
-	const endpoint = document.getElementById('input-feed').value;
-	const subreddit = document.getElementById('input-subreddit').value.trim();
+	const token = document.getElementById('input-token')?.value.trim();
+	const session = document.getElementById('input-session')?.value.trim();
+	const proxy = document.getElementById('input-proxy')?.value.trim();
+	const endpoint = document.getElementById('input-feed')?.value;
+	const subreddit = document.getElementById('input-subreddit')?.value.trim();
+
+	const auth = JSON.parse(localStorage.getItem(AUTH_KEY) || '{}');
+	auth.proxyUrl = proxy;
 
 	if (token && session) {
-		const auth = {
-			tokenV2: token,
-			session: session,
-			userAgent: 'reddit-client-even/1.0',
-			savedAt: new Date().toISOString(),
-		};
-		localStorage.setItem(AUTH_KEY, JSON.stringify(auth));
+		auth.tokenV2 = token;
+		auth.session = session;
+		auth.userAgent = 'reddit-client-even/1.0';
+		auth.savedAt = new Date().toISOString();
 	} else if (token || session) {
 		alert('Both token_v2 and reddit_session are required to authenticate.');
 		return;
 	}
+	localStorage.setItem(AUTH_KEY, JSON.stringify(auth));
 	const cfg = { feed: { endpoint: endpoint, subreddit: subreddit, limit: 25, time: 'day' } };
 	localStorage.setItem(CONFIG_KEY, JSON.stringify(cfg));
 

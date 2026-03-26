@@ -10,12 +10,18 @@ import { AuthManager } from './auth-manager';
 import { RateLimiter } from './rate-limiter';
 
 export class RedditClient implements RedditClientInterface {
-	private auth: AuthManager;
-	private rateLimiter: RateLimiter;
+	private readonly auth: AuthManager;
+	private readonly rateLimiter: RateLimiter;
 
-	/** Proxy base URL — auto-detects LAN IP so the WebView on the phone connects correctly. */
+	/** Proxy base URL — auto-detects LAN IP or uses configured remote Worker. */
 	private get baseUrl(): string {
-		const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+		const config = this.auth.getConfig();
+		if (config.proxyUrl) {
+			// Ensure it ends with /api/reddit
+			const base = config.proxyUrl.endsWith('/') ? config.proxyUrl.slice(0, -1) : config.proxyUrl;
+			return `${base}/api/reddit`;
+		}
+		const host = globalThis?.location?.hostname || 'localhost';
 		return `http://${host}:3001/api/reddit`;
 	}
 
@@ -168,7 +174,7 @@ export class RedditClient implements RedditClientInterface {
 		}
 
 		// Reddit encodes preview URLs with &amp; — decode for direct use
-		const preview = raw.preview?.images?.[0]?.source?.url?.replace(/&amp;/g, '&');
+		const preview = raw.preview?.images?.[0]?.source?.url?.replaceAll('&amp;', '&');
 
 		return {
 			id: raw.id,

@@ -99,6 +99,7 @@ export interface AuthConfig {
   session?: string;
   userAgent: string;
   modhash?: string;
+  proxyUrl?: string;
 }
 
 export interface SyncConfig {

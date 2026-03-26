@@ -11,6 +11,7 @@ export const DEFAULT_AUTH: AuthConfig = {
   tokenV2: '',
   session: '',
   userAgent: 'reddit-client-even/1.0 (Even G2 smart glasses; contact@example.com)',
+  proxyUrl: '',
 };
 
 export const DEFAULT_FEED: FeedConfig = {

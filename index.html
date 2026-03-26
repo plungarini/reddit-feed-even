@@ -142,6 +142,11 @@
 					<small>Also from Cookies → reddit_session (required for auth)</small>
 				</div>
 				<div class="field">
+					<label>Proxy Server URL (Backend)</label>
+					<input type="text" id="input-proxy" placeholder="e.g. https://my-worker.workers.dev/" />
+					<small>Default: LAN IP:3001 or env.js value</small>
+				</div>
+				<div class="field">
 					<label>Feed endpoint</label>
 					<select id="input-feed">
 						<option value="hot">Hot - Trending now</option>
@@ -154,10 +159,10 @@
 						<option value="r/all">All - Everything</option>
 					</select>
 				</div>
-				<div class="field">
+				<!-- <div class="field">
 					<label>Subreddit (leave empty for front page)</label>
 					<input type="text" id="input-subreddit" placeholder="e.g. technology" />
-				</div>
+				</div> -->
 				<div class="btn-row" style="margin-top: 4px">
 					<button class="btn primary" onclick="saveSettings()">💾 Save</button>
 					<button class="btn secondary" onclick="testAuth()">🔐 Test Auth</button>
