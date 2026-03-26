@@ -40,7 +40,6 @@
 		"qr:dev": "evenhub qr --http --port 5173",
 		"qr:preview": "evenhub qr --http --port 4173",
 		"server": "tsx server/index.ts",
-		"start": "tsx server/index.ts",
 		"test": "vitest run",
 		"test:watch": "vitest",
 		"typecheck": "tsc --noEmit"
