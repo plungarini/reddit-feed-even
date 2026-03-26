@@ -82,13 +82,11 @@ jobs:
         run: npm run typecheck
 
       - name: Build app for GitHub Pages (Staging)
-        run: |
-          # Update vite config for staging base path
-          sed -i "s|return '/reddit-client-even/';|return '/reddit-client-even/staging/';|g" vite.config.ts
-          npm run build
+        run: npm run build
         env:
           NODE_ENV: development
           GITHUB_PAGES: 'true'
+          STAGING: 'true'
 
       - name: Add static files
         run: |
