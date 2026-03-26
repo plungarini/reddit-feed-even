@@ -1,32 +1,54 @@
 /**
- * Detail View - Text Container
- * 
- * Displays full post details including title, content, and metadata.
- * Uses Even Hub's TextContainer for scrollable content.
+ * Detail View - Content-Only Scrolling
+ *
+ * Displays single post content that scrolls via firmware.
+ * NO post-to-post navigation - user must go back to feed to select different post.
+ *
+ * Layout:
+ *   - Full-screen text container
+ *   - Content includes: header (subreddit, score), title, body, footer
+ *   - Firmware handles scrolling long content
+ *   - Border around container for visual distinction
+ *
+ * Navigation:
+ *   Scroll up/down         → scrolls content (firmware handled)
+ *   Single tap (CLICK)     → go to comments
+ *   Double tap             → back to feed
  */
 
 import {
-  CreateStartUpPageContainer,
-  TextContainerProperty,
   EvenAppBridge,
-  TextContainerUpgrade,
+  RebuildPageContainer,
+  TextContainerProperty,
 } from '@evenrealities/even_hub_sdk';
 import { CachedPost } from '../../types';
 
+const MAX_CHARS = 1000; // SDK limit for rebuild
+
 export class DetailView {
   private bridge: EvenAppBridge;
+  private lastPostId: string | null = null;
 
   constructor(bridge: EvenAppBridge) {
     this.bridge = bridge;
   }
 
   /**
-   * Render post detail view
+   * Render post detail - single text container with scrollable content
    */
   async render(post: CachedPost): Promise<void> {
-    const content = this.buildContent(post);
+    if (!post || !post.id) {
+      console.error('[DetailView] Invalid post');
+      return;
+    }
 
-    const container = new CreateStartUpPageContainer({
+    const postChanged = this.lastPostId !== post.id;
+    this.lastPostId = post.id;
+
+    const content = this.buildContent(post);
+    console.log(`[DetailView] render post=${post.id} len=${content.length} changed=${postChanged}`);
+
+    const ok = await this.bridge.rebuildPageContainer(new RebuildPageContainer({
       containerTotalNum: 1,
       textObject: [
         new TextContainerProperty({
@@ -36,151 +58,116 @@ export class DetailView {
           height: 288,
           borderWidth: 1,
           borderColor: 5,
-          borderRadius: 4,
-          paddingLength: 8,
+          paddingLength: 10,
           containerID: 1,
           containerName: 'detail',
-          isEventCapture: 1,
+          isEventCapture: 1,  // Captures scroll for content scrolling
           content,
         }),
       ],
-    });
-
-    await this.bridge.createStartUpPageContainer(container);
-  }
-
-  /**
-   * Update content without full rebuild
-   */
-  async update(post: CachedPost): Promise<void> {
-    const content = this.buildContent(post);
-
-    await this.bridge.textContainerUpgrade(new TextContainerUpgrade({
-      containerID: 1,
-      containerName: 'detail',
-      contentOffset: 0,
-      contentLength: 2000, // Approximate max
-      content,
     }));
+
+    console.log('[DetailView] rebuildPageContainer:', ok);
   }
 
   /**
-   * Build display content for a post
+   * Build post content for display
+   * Format:
+   *   r/subreddit  ▲score  💬comments
+   *   
+   *   Title
+   *   
+   *   [Body or content type indicator]
+   *   
+   *   u/author • time ago
+   *   
+   *   tap: comments  dbl: back
    */
   private buildContent(post: CachedPost): string {
     const lines: string[] = [];
 
-    // Header with metadata
-    const metaParts: string[] = [];
-    metaParts.push(`r/${post.subreddit}`);
-    metaParts.push(`▲ ${this.formatScore(post.score)}`);
-    metaParts.push(`💬 ${post.numComments}`);
-    if (post.interaction) {
-      metaParts.push(this.getInteractionLabel(post.interaction));
-    }
-    lines.push(metaParts.join('  |  '));
+    // Header: subreddit, score, comments
+    const score = fmtScore(post.score);
+    const comments = fmtNum(post.numComments);
+    lines.push(`r/${post.subreddit}  ▲${score}  💬${comments}`);
     lines.push('');
 
-    // Title
-    lines.push(this.wrapText(post.title, 68));
+    // Title (may wrap)
+    lines.push(post.title);
     lines.push('');
 
-    // Selftext or URL
-    if (post.selftext) {
-      const selftext = this.wrapText(post.selftext, 68);
-      lines.push(selftext.substring(0, 900)); // Limit selftext length
-      lines.push('');
-    } else if (post.contentType === 'link') {
-      lines.push(`🔗 ${this.truncate(post.url, 65)}`);
-      lines.push('');
-    }
-
-    // Content type indicator
-    if (post.contentType !== 'self' && post.contentType !== 'link') {
+    // Body or content indicator
+    if (post.contentType === 'self' && post.selftext) {
+      const body = stripMarkdown(post.selftext);
+      // Limit body to prevent overflow
+      const truncated = body.length > 600 ? body.substring(0, 597) + '...' : body;
+      lines.push(truncated);
+    } else {
       lines.push(`[${post.contentType.toUpperCase()}]`);
-      lines.push('');
-    }
-
-    // Author and time
-    const timeAgo = this.formatTimeAgo(post.createdUtc);
-    lines.push(`by u/${post.author} · ${timeAgo}`);
-    lines.push('');
-
-    // Footer with controls hint
-    lines.push('─'.repeat(40));
-    lines.push('Swipe: Next/Prev  |  Tap: Comments  |  Double: Back');
-
-    return lines.join('\n').substring(0, 1950);
-  }
-
-  /**
-   * Format score with k/m suffix
-   */
-  private formatScore(score: number): string {
-    if (score >= 1000000) {
-      return `${(score / 1000000).toFixed(1)}m`;
-    }
-    if (score >= 1000) {
-      return `${(score / 1000).toFixed(1)}k`;
-    }
-    return String(score);
-  }
-
-  /**
-   * Format timestamp as relative time
-   */
-  private formatTimeAgo(createdUtc: number): string {
-    const seconds = Math.floor(Date.now() / 1000) - createdUtc;
-
-    if (seconds < 60) return 'just now';
-    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
-    if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`;
-    return `${Math.floor(seconds / 604800)}w ago`;
-  }
-
-  /**
-   * Get label for interaction
-   */
-  private getInteractionLabel(interaction: string): string {
-    switch (interaction) {
-      case 'upvote': return '▲ upvoted';
-      case 'downvote': return '▼ downvoted';
-      case 'hide': return '✓ hidden';
-      case 'save': return '★ saved';
-      default: return '';
-    }
-  }
-
-  /**
-   * Wrap text to fit container width
-   */
-  private wrapText(text: string, width: number): string {
-    const words = text.split(' ');
-    const lines: string[] = [];
-    let currentLine = '';
-
-    for (const word of words) {
-      if ((currentLine + ' ' + word).length > width) {
-        lines.push(currentLine.trim());
-        currentLine = word;
-      } else {
-        currentLine += ' ' + word;
+      if (post.contentType === 'link') {
+        lines.push(extractDomain(post.url));
       }
     }
 
-    if (currentLine.trim()) {
-      lines.push(currentLine.trim());
-    }
+    lines.push('');
 
-    return lines.join('\n');
-  }
+    // Footer: author, time
+    lines.push(`u/${post.author} • ${timeAgo(post.createdUtc)}`);
+    lines.push('');
 
-  /**
-   * Truncate text with ellipsis
-   */
-  private truncate(text: string, maxLength: number): string {
-    if (text.length <= maxLength) return text;
-    return text.substring(0, maxLength - 3) + '...';
+    // Navigation hint
+    lines.push('tap: comments  dbl: back');
+
+    return lines.join('\n').substring(0, MAX_CHARS);
   }
+}
+
+// ─── Utilities ────────────────────────────────────────────────────────────────
+
+function fmtScore(n: number): string {
+  if (!n || n <= 0) return '0';
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}m`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(n);
+}
+
+function fmtNum(n: number): string {
+  if (!n || n <= 0) return '0';
+  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}k`;
+  return String(n);
+}
+
+function timeAgo(createdUtc: number): string {
+  if (!createdUtc) return 'unknown';
+  const secs = Math.floor(Date.now() / 1000) - createdUtc;
+  if (secs < 60) return 'now';
+  if (secs < 3600) return `${Math.floor(secs / 60)}m`;
+  if (secs < 86400) return `${Math.floor(secs / 3600)}h`;
+  if (secs < 604800) return `${Math.floor(secs / 86400)}d`;
+  return `${Math.floor(secs / 604800)}w`;
+}
+
+function extractDomain(url: string): string {
+  if (!url) return '';
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return url.substring(0, 30);
+  }
+}
+
+function stripMarkdown(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/\*(.+?)\*/g, '$1')
+    .replace(/__(.+?)__/g, '$1')
+    .replace(/_(.+?)_/g, '$1')
+    .replace(/~~(.+?)~~/g, '$1')
+    .replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^>\s*/gm, '  ')
+    .replace(/`{1,3}([^`]+)`{1,3}/g, '$1')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }

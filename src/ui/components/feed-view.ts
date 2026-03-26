@@ -1,158 +1,156 @@
 /**
- * Feed View - List Container
- * 
- * Displays a scrollable list of posts using Even Hub's ListContainer.
- * Optimized for G2 display constraints.
+ * Feed View
+ *
+ * Shows 4 posts + 1 footer row using 5 TextContainerProperty instances.
+ * The highlighted row gets borderWidth:1 to indicate selection.
+ * Scroll is handled manually in main.ts: SCROLL_BOTTOM/TOP events
+ * increment/decrement highlightedIndex in PostStore, triggering a full
+ * rebuildPageContainer to update which container has the border.
+ *
+ * Layout (576 × 288 px):
+ *   IDs 1-4: post rows  (height=64 px each, yPosition = (id-1) × 64)
+ *   ID  5:   footer row (height=32 px, yPosition=256)
+ *
+ * Why 4 posts?
+ *   LVGL line height ≈ 28-30 px. Each post shows 2 lines (sub+score / title).
+ *   Min readable row = 64 px (56 px usable after 4px padding each side).
+ *   5 posts × 64 px = 320 px > 288 px — doesn't fit.
+ *   4 posts × 64 px = 256 px + 32 px footer = 288 px ✓
+ *
+ * containerTotalNum = 5 (always, even when a post slot is empty)
+ * isEventCapture    = 1 on container ID 1 only (G2 gestures are global)
+ *
+ * Navigation:
+ *   SCROLL_DOWN: move highlight down; at footer (index 4) → next page
+ *   SCROLL_UP:   move highlight up; at index 0 → prev page
+ *   CLICK:       open highlighted post, or trigger load-more if footer selected
+ *   DOUBLE_CLICK: refresh feed
  */
 
-import {
-  CreateStartUpPageContainer,
-  ListContainerProperty,
-  ListItemContainerProperty,
-  EvenAppBridge,
-} from '@evenrealities/even_hub_sdk';
+import { EvenAppBridge, RebuildPageContainer, TextContainerProperty } from '@evenrealities/even_hub_sdk';
 import { CachedPost } from '../../types';
 
-export interface FeedViewOptions {
-  showScores?: boolean;
-  showSubreddit?: boolean;
-  maxTitleLength?: number;
-}
+export const POSTS_PER_PAGE = 4;
+
+const POST_H = 64; // height of each post row (px);  4 × 64 = 256 px
+const FOOTER_Y = POSTS_PER_PAGE * POST_H; //           256 px
+const FOOTER_H = 288 - FOOTER_Y; //                    32 px
+const POST_PAD = 4; // padding inside each post row
+const FOOTER_PAD = 2; // tighter padding for the narrow footer
 
 export class FeedView {
-  private bridge: EvenAppBridge;
-  private options: FeedViewOptions;
+	private bridge: EvenAppBridge;
 
-  constructor(
-    bridge: EvenAppBridge,
-    options: FeedViewOptions = {}
-  ) {
-    this.bridge = bridge;
-    this.options = {
-      showScores: true,
-      showSubreddit: true,
-      maxTitleLength: 45,
-      ...options,
-    };
-  }
+	constructor(bridge: EvenAppBridge) {
+		this.bridge = bridge;
+	}
 
-  /**
-   * Render the feed list
-   */
-  async render(posts: CachedPost[], selectedIndex: number = 0): Promise<void> {
-    const displayPosts = posts.slice(0, 20); // Max 20 items in list
-    const items = displayPosts.map((post, index) => 
-      this.formatPostItem(post, index === selectedIndex)
-    );
+	/**
+	 * Render the full feed page.
+	 *
+	 * @param posts           All loaded posts
+	 * @param pageIndex       Current page (0-based)
+	 * @param highlightedIndex Which row is selected: 0-3 = post, 4 = footer
+	 * @param hasMore         Whether more posts can be fetched
+	 * @param loadingMore     Whether a load-more is in flight
+	 */
+	async render(
+		posts: CachedPost[],
+		pageIndex: number,
+		highlightedIndex: number,
+		hasMore: boolean,
+		loadingMore: boolean,
+	): Promise<void> {
+		const startIdx = pageIndex * POSTS_PER_PAGE;
+		const pagePosts = posts.slice(startIdx, startIdx + POSTS_PER_PAGE);
+		const totalPages = Math.max(1, Math.ceil(posts.length / POSTS_PER_PAGE));
 
-    // Handle empty state
-    if (items.length === 0) {
-      items.push('No posts available');
-    }
+		const containers: TextContainerProperty[] = [];
 
-    const container = new CreateStartUpPageContainer({
-      containerTotalNum: 1,
-      listObject: [
-        new ListContainerProperty({
-          xPosition: 0,
-          yPosition: 0,
-          width: 576,
-          height: 288,
-          borderWidth: 1,
-          borderColor: 13,
-          borderRadius: 6,
-          paddingLength: 5,
-          containerID: 1,
-          containerName: 'feed',
-          isEventCapture: 1,
-          itemContainer: new ListItemContainerProperty({
-            itemCount: items.length,
-            itemWidth: 560,
-            isItemSelectBorderEn: 1,
-            itemName: items,
-          }),
-        }),
-      ],
-    });
+		// ── Post rows (0 – 3) ────────────────────────────────────────────────────
+		for (let i = 0; i < POSTS_PER_PAGE; i++) {
+			const post = pagePosts[i] ?? null;
+			const selected = i === highlightedIndex;
 
-    await this.bridge.createStartUpPageContainer(container);
-  }
+			containers.push(
+				new TextContainerProperty({
+					xPosition: 0,
+					yPosition: i * POST_H,
+					width: 576,
+					height: POST_H,
+					borderWidth: selected ? 1 : 0,
+					borderColor: selected ? 15 : 0,
+					borderRadius: selected ? 8 : 0,
+					paddingLength: POST_PAD,
+					containerID: i + 1,
+					containerName: `post${i}`,
+					isEventCapture: i === 0 ? 1 : 0,
+					content: post ? formatPost(post) : '',
+				}),
+			);
+		}
 
-  /**
-   * Format a single post for display
-   */
-  private formatPostItem(post: CachedPost, isSelected: boolean): string {
-    const parts: string[] = [];
+		// ── Footer / load-more row (index 4) ─────────────────────────────────────
+		const footerSelected = highlightedIndex === POSTS_PER_PAGE;
 
-    // Selection indicator
-    parts.push(isSelected ? '▶' : ' ');
+		containers.push(
+			new TextContainerProperty({
+				xPosition: 0,
+				yPosition: FOOTER_Y,
+				width: 576,
+				height: FOOTER_H,
+				borderWidth: footerSelected ? 1 : 0,
+				borderColor: footerSelected ? 15 : 0,
+				paddingLength: FOOTER_PAD,
+				containerID: POSTS_PER_PAGE + 1,
+				containerName: 'footer',
+				isEventCapture: 0,
+				content: buildFooter(pageIndex, totalPages, hasMore, loadingMore),
+			}),
+		);
 
-    // Score
-    if (this.options.showScores) {
-      parts.push(this.formatScore(post.score));
-    }
+		console.log(
+			`[FeedView] render page=${pageIndex}/${totalPages} hl=${highlightedIndex} ` +
+				`posts=${pagePosts.length} hasMore=${hasMore} loadingMore=${loadingMore}`,
+		);
 
-    // Subreddit
-    if (this.options.showSubreddit) {
-      parts.push(`r/${post.subreddit}`);
-    }
+		const ok = await this.bridge.rebuildPageContainer(
+			new RebuildPageContainer({
+				containerTotalNum: POSTS_PER_PAGE + 1, // 5
+				textObject: containers,
+			}),
+		);
 
-    // Title
-    const title = this.truncate(post.title, this.options.maxTitleLength || 45);
-    parts.push(title);
+		console.log('[FeedView] rebuildPageContainer:', ok);
+	}
+}
 
-    // Interaction indicator
-    if (post.interaction) {
-      const icon = this.getInteractionIcon(post.interaction);
-      parts.push(icon);
-    }
+// ── Content helpers ────────────────────────────────────────────────────────────
 
-    // Seen indicator
-    if (post.seen && !isSelected) {
-      parts.push('·');
-    }
+function formatPost(post: CachedPost): string {
+	const score = fmtScore(post.score);
+	const cmt = fmtNum(post.numComments);
+	const line1 = `r/${post.subreddit}  ↑${score}  ${cmt}c`;
+	const title = post.title.length > 60 ? post.title.substring(0, 60) + '...' : post.title;
+	return `${line1}\n${title}`;
+}
 
-    return parts.join(' ');
-  }
+function buildFooter(page: number, total: number, hasMore: boolean, loadingMore: boolean): string {
+	const pg = `[${page + 1}/${total}]`;
+	if (loadingMore) return `${pg} Loading...`;
+	if (hasMore) return `${pg} ▼ more  tap:open  dbl:refresh`;
+	return `${pg} tap:open  dbl:refresh`;
+}
 
-  /**
-   * Format score with k/m suffix
-   */
-  private formatScore(score: number): string {
-    if (score >= 1000000) {
-      return `${(score / 1000000).toFixed(1)}m`;
-    }
-    if (score >= 1000) {
-      return `${(score / 1000).toFixed(1)}k`;
-    }
-    return String(score);
-  }
+function fmtScore(n: number): string {
+	if (!n || n <= 0) return '0';
+	if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}m`;
+	if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+	return String(n);
+}
 
-  /**
-   * Truncate text to max length
-   */
-  private truncate(text: string, maxLength: number): string {
-    if (text.length <= maxLength) return text;
-    return text.substring(0, maxLength - 3) + '...';
-  }
-
-  /**
-   * Get icon for interaction type
-   */
-  private getInteractionIcon(interaction: string): string {
-    switch (interaction) {
-      case 'upvote': return '▲';
-      case 'downvote': return '▼';
-      case 'hide': return '✓';
-      case 'save': return '★';
-      default: return '';
-    }
-  }
-
-  /**
-   * Update view options
-   */
-  setOptions(options: Partial<FeedViewOptions>): void {
-    this.options = { ...this.options, ...options };
-  }
+function fmtNum(n: number): string {
+	if (!n || n <= 0) return '0';
+	if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+	return String(n);
 }

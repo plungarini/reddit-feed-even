@@ -3,181 +3,915 @@
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-		<title>Reddit Client</title>
+		<title>Reddit Client — Debug</title>
+
+		<!--
+			Intercept console BEFORE main.ts loads so every log from the app
+			is captured and shown in the debug panel below.
+		-->
+		<script>
+			(function () {
+				window.__debugLogs = [];
+				window.__appState = {
+					status: 'starting',
+					view: 'feed',
+					posts: 0,
+					error: null,
+					bridgeReady: false,
+					serverUrl: null,
+				};
+
+				var _log = console.log.bind(console);
+				var _warn = console.warn.bind(console);
+				var _error = console.error.bind(console);
+
+				function capture(level, args) {
+					var msg = Array.prototype.slice
+						.call(args)
+						.map(function (a) {
+							if (a instanceof Error) return a.stack || a.message;
+							if (a !== null && typeof a === 'object') {
+								try {
+									return JSON.stringify(a, null, 2);
+								} catch (_) {
+									return String(a);
+								}
+							}
+							return String(a);
+						})
+						.join(' ');
+					window.__debugLogs.push({ level: level, msg: msg, ts: Date.now() });
+					if (typeof window.__refreshDebug === 'function') window.__refreshDebug();
+				}
+
+				console.log = function () {
+					_log.apply(console, arguments);
+					capture('log', arguments);
+				};
+				console.warn = function () {
+					_warn.apply(console, arguments);
+					capture('warn', arguments);
+				};
+				console.error = function () {
+					_error.apply(console, arguments);
+					capture('error', arguments);
+				};
+
+				window.addEventListener('error', function (e) {
+					capture('error', ['[Uncaught] ' + e.message + (e.filename ? ' @ ' + e.filename + ':' + e.lineno : '')]);
+				});
+				window.addEventListener('unhandledrejection', function (e) {
+					var r = e.reason;
+					capture('error', ['[Promise] ' + (r instanceof Error ? r.stack || r.message : String(r))]);
+				});
+
+				// Listen for state updates dispatched by main.ts
+				window.addEventListener('app:state', function (e) {
+					Object.assign(window.__appState, e.detail);
+					if (typeof window.__refreshDebug === 'function') window.__refreshDebug();
+				});
+			})();
+		</script>
+
+		<!-- App entry point — initialises the glasses display -->
+		<script type="module" src="/src/main.ts"></script>
+
 		<style>
-			* {
+			*,
+			*::before,
+			*::after {
+				box-sizing: border-box;
 				margin: 0;
 				padding: 0;
-				box-sizing: border-box;
 			}
+
+			:root {
+				--bg: #0d1117;
+				--surface: #161b22;
+				--border: #30363d;
+				--text: #e6edf3;
+				--muted: #8b949e;
+				--accent: #ff4500;
+				--green: #3fb950;
+				--yellow: #d29922;
+				--red: #f85149;
+				--blue: #58a6ff;
+				--font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+			}
+
 			body {
-				font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-				background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-				color: #fff;
+				background: var(--bg);
+				color: var(--text);
+				font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+				font-size: 14px;
+				line-height: 1.5;
 				min-height: 100vh;
-				display: flex;
-				flex-direction: column;
-				align-items: center;
-				justify-content: center;
-				padding: 40px 20px;
-				text-align: center;
+				padding: 16px;
 			}
-			.logo {
-				width: 100px;
-				height: 100px;
-				background: linear-gradient(135deg, #ff4500 0%, #ff6b35 100%);
-				border-radius: 24px;
+
+			/* ── Layout ─────────────────────────────────────── */
+			.grid {
+				display: grid;
+				grid-template-columns: 1fr 1fr;
+				gap: 16px;
+				max-width: 1100px;
+				margin: 0 auto;
+			}
+			@media (max-width: 720px) {
+				.grid {
+					grid-template-columns: 1fr;
+				}
+			}
+			.col-full {
+				grid-column: 1 / -1;
+			}
+
+			/* ── Header ─────────────────────────────────────── */
+			.header {
+				grid-column: 1 / -1;
+				display: flex;
+				align-items: center;
+				gap: 12px;
+				padding-bottom: 16px;
+				border-bottom: 1px solid var(--border);
+				margin-bottom: 4px;
+			}
+			.header-logo {
+				width: 40px;
+				height: 40px;
+				background: linear-gradient(135deg, var(--accent), #ff6b35);
+				border-radius: 10px;
 				display: flex;
 				align-items: center;
 				justify-content: center;
+				font-size: 22px;
+			}
+			.header h1 {
+				font-size: 18px;
+				font-weight: 700;
+			}
+			.header .subtitle {
+				font-size: 12px;
+				color: var(--muted);
+			}
+			.badge {
 				margin-left: auto;
-				margin-right: auto;
-				font-size: 48px;
-				margin-bottom: 24px;
-				box-shadow: 0 20px 60px rgba(255, 69, 0, 0.3);
-				animation: float 3s ease-in-out infinite;
+				padding: 4px 10px;
+				border-radius: 20px;
+				font-size: 12px;
+				font-weight: 600;
 			}
-			@keyframes float {
-				0%,
-				100% {
-					transform: translateY(0);
-				}
-				50% {
-					transform: translateY(-10px);
-				}
+			.badge.ok {
+				background: rgba(63, 185, 80, 0.15);
+				color: var(--green);
+				border: 1px solid rgba(63, 185, 80, 0.3);
 			}
-			h1 {
-				font-size: 32px;
+			.badge.error {
+				background: rgba(248, 81, 73, 0.15);
+				color: var(--red);
+				border: 1px solid rgba(248, 81, 73, 0.3);
+			}
+			.badge.pending {
+				background: rgba(210, 153, 34, 0.15);
+				color: var(--yellow);
+				border: 1px solid rgba(210, 153, 34, 0.3);
+			}
+
+			/* ── Cards ──────────────────────────────────────── */
+			.card {
+				background: var(--surface);
+				border: 1px solid var(--border);
+				border-radius: 10px;
+				padding: 16px;
+			}
+			.card-title {
+				font-size: 12px;
+				font-weight: 600;
+				text-transform: uppercase;
+				letter-spacing: 0.06em;
+				color: var(--muted);
+				margin-bottom: 12px;
+				display: flex;
+				align-items: center;
+				gap: 6px;
+			}
+
+			/* ── State grid ─────────────────────────────────── */
+			.state-grid {
+				display: grid;
+				grid-template-columns: repeat(3, 1fr);
+				gap: 8px;
+			}
+			.stat {
+				background: var(--bg);
+				border: 1px solid var(--border);
+				border-radius: 8px;
+				padding: 10px 12px;
+			}
+			.stat-label {
+				font-size: 11px;
+				color: var(--muted);
+				margin-bottom: 2px;
+			}
+			.stat-value {
+				font-size: 16px;
+				font-weight: 700;
+				font-family: var(--font-mono);
+			}
+			.stat-value.ok {
+				color: var(--green);
+			}
+			.stat-value.error {
+				color: var(--red);
+			}
+			.stat-value.muted {
+				color: var(--muted);
+			}
+
+			/* ── Error box ──────────────────────────────────── */
+			.error-box {
+				background: rgba(248, 81, 73, 0.08);
+				border: 1px solid rgba(248, 81, 73, 0.25);
+				border-radius: 8px;
+				padding: 10px 12px;
+				font-family: var(--font-mono);
+				font-size: 12px;
+				color: var(--red);
+				white-space: pre-wrap;
+				word-break: break-all;
+				max-height: 120px;
+				overflow-y: auto;
+				display: none;
+			}
+			.error-box.visible {
+				display: block;
+			}
+
+			/* ── Settings ───────────────────────────────────── */
+			.field {
 				margin-bottom: 12px;
 			}
-			.subtitle {
-				color: #8892b0;
-				font-size: 16px;
-				margin-bottom: 40px;
+			.field label {
+				display: block;
+				font-size: 12px;
+				color: var(--muted);
+				margin-bottom: 4px;
 			}
-			.card {
-				background: rgba(255, 255, 255, 0.05);
-				border: 1px solid rgba(255, 255, 255, 0.1);
-				border-radius: 16px;
-				padding: 24px;
-				max-width: 400px;
+			.field input,
+			.field select {
 				width: 100%;
+				padding: 8px 10px;
+				background: var(--bg);
+				border: 1px solid var(--border);
+				border-radius: 6px;
+				color: var(--text);
+				font-size: 13px;
+				font-family: var(--font-mono);
+			}
+			.field input:focus,
+			.field select:focus {
+				outline: none;
+				border-color: var(--accent);
+			}
+			.field small {
+				display: block;
+				margin-top: 4px;
+				font-size: 11px;
+				color: var(--muted);
+			}
+
+			.btn-row {
+				display: flex;
+				gap: 8px;
+				flex-wrap: wrap;
 			}
 			.btn {
-				display: block;
-				width: 100%;
-				background: linear-gradient(135deg, #ff4500 0%, #ff6b35 100%);
-				color: #fff;
-				padding: 16px;
-				border-radius: 12px;
-				font-weight: 600;
-				font-size: 16px;
+				padding: 8px 16px;
 				border: none;
+				border-radius: 6px;
+				font-size: 13px;
+				font-weight: 600;
 				cursor: pointer;
-				margin-bottom: 12px;
-				transition:
-					transform 0.2s,
-					box-shadow 0.2s;
+				transition: opacity 0.15s;
 			}
 			.btn:hover {
-				transform: translateY(-2px);
-				box-shadow: 0 10px 30px rgba(255, 69, 0, 0.3);
+				opacity: 0.85;
 			}
-			.btn-secondary {
-				background: rgba(255, 255, 255, 0.1);
+			.btn.primary {
+				background: var(--accent);
+				color: #fff;
 			}
-			.help-text {
-				color: #8892b0;
+			.btn.secondary {
+				background: var(--surface);
+				border: 1px solid var(--border);
+				color: var(--text);
+			}
+			.btn.success {
+				background: var(--green);
+				color: #fff;
+			}
+			.btn.danger {
+				background: var(--red);
+				color: #fff;
+			}
+
+			/* ── Server info ────────────────────────────────── */
+			.server-info {
+				display: flex;
+				align-items: center;
+				gap: 8px;
+				padding: 8px 10px;
+				background: var(--bg);
+				border: 1px solid var(--border);
+				border-radius: 6px;
+				font-family: var(--font-mono);
+				font-size: 12px;
+				margin-bottom: 12px;
+			}
+			.dot {
+				width: 8px;
+				height: 8px;
+				border-radius: 50%;
+				background: var(--muted);
+				flex-shrink: 0;
+			}
+			.dot.ok {
+				background: var(--green);
+			}
+			.dot.error {
+				background: var(--red);
+			}
+
+			/* ── Console log ────────────────────────────────── */
+			.log-toolbar {
+				display: flex;
+				align-items: center;
+				gap: 8px;
+				margin-bottom: 8px;
+			}
+			.log-toolbar .filters {
+				display: flex;
+				gap: 4px;
+			}
+			.filter-btn {
+				padding: 3px 8px;
+				border-radius: 12px;
+				font-size: 11px;
+				font-weight: 600;
+				cursor: pointer;
+				border: 1px solid transparent;
+				background: var(--bg);
+				color: var(--muted);
+			}
+			.filter-btn.active-log {
+				border-color: var(--blue);
+				color: var(--blue);
+			}
+			.filter-btn.active-warn {
+				border-color: var(--yellow);
+				color: var(--yellow);
+			}
+			.filter-btn.active-error {
+				border-color: var(--red);
+				color: var(--red);
+			}
+
+			#log-panel {
+				background: var(--bg);
+				border: 1px solid var(--border);
+				border-radius: 8px;
+				height: 340px;
+				overflow-y: auto;
+				font-family: var(--font-mono);
+				font-size: 12px;
+				padding: 8px;
+			}
+			.log-entry {
+				display: grid;
+				grid-template-columns: 60px 40px 1fr;
+				gap: 6px;
+				padding: 2px 0;
+				border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+				white-space: pre-wrap;
+				word-break: break-all;
+			}
+			.log-entry:last-child {
+				border-bottom: none;
+			}
+			.log-time {
+				color: var(--muted);
+				font-size: 11px;
+			}
+			.log-level {
+				font-weight: 700;
+				font-size: 11px;
+			}
+			.log-level.log {
+				color: var(--muted);
+			}
+			.log-level.warn {
+				color: var(--yellow);
+			}
+			.log-level.error {
+				color: var(--red);
+			}
+			.log-msg.warn {
+				color: var(--yellow);
+			}
+			.log-msg.error {
+				color: var(--red);
+			}
+
+			.empty-state {
+				text-align: center;
+				padding: 40px;
+				color: var(--muted);
+				font-size: 12px;
+			}
+
+			.toast {
+				position: fixed;
+				bottom: 20px;
+				right: 20px;
+				background: var(--surface);
+				border: 1px solid var(--border);
+				border-radius: 8px;
+				padding: 10px 16px;
 				font-size: 13px;
-				margin-top: 16px;
-				line-height: 1.6;
+				font-weight: 500;
+				animation: slideUp 0.2s ease;
 			}
-			.hidden {
-				display: none !important;
+			@keyframes slideUp {
+				from {
+					transform: translateY(10px);
+					opacity: 0;
+				}
+				to {
+					transform: translateY(0);
+					opacity: 1;
+				}
 			}
 		</style>
 	</head>
 	<body>
-		<div id="loading" class="card">
-			<div class="logo">🤖</div>
-			<h1>Reddit Client</h1>
-			<p class="subtitle">Loading...</p>
-		</div>
+		<div class="grid" id="app">
+			<!-- Header -->
+			<div class="header">
+				<div class="header-logo">🤖</div>
+				<div>
+					<div class="header h1" style="font-size: 18px; font-weight: 700">Reddit Client</div>
+					<div class="subtitle">Even Realities G2 · Debug Panel</div>
+				</div>
+				<span class="badge pending" id="status-badge">Starting…</span>
+			</div>
 
-		<div id="setup" class="card hidden">
-			<div class="logo">🤖</div>
-			<h1>Reddit Client</h1>
-			<p class="subtitle">Setup Required</p>
-			<button id="config-btn" class="btn">⚙️ Open Configuration</button>
-			<p class="help-text">
-				Configure your Reddit authentication to use this app.<br />
-				Your settings will be saved on this device.
-			</p>
-		</div>
+			<!-- State card -->
+			<div class="card col-full">
+				<div class="card-title">📊 App State</div>
+				<div class="state-grid">
+					<div class="stat">
+						<div class="stat-label">Status</div>
+						<div class="stat-value muted" id="st-status">starting</div>
+					</div>
+					<div class="stat">
+						<div class="stat-label">Bridge</div>
+						<div class="stat-value muted" id="st-bridge">waiting</div>
+					</div>
+					<div class="stat">
+						<div class="stat-label">Posts loaded</div>
+						<div class="stat-value muted" id="st-posts">0</div>
+					</div>
+					<div class="stat">
+						<div class="stat-label">Current view</div>
+						<div class="stat-value muted" id="st-view">—</div>
+					</div>
+					<div class="stat">
+						<div class="stat-label">Server</div>
+						<div class="stat-value muted" id="st-server">checking…</div>
+					</div>
+					<div class="stat">
+						<div class="stat-label">Auth</div>
+						<div class="stat-value muted" id="st-auth">—</div>
+					</div>
+				</div>
+				<div class="error-box" id="error-box"></div>
+			</div>
 
-		<div id="ready" class="card hidden">
-			<div class="logo">🤖</div>
-			<h1>Reddit Client</h1>
-			<p class="subtitle">Ready!</p>
-			<button id="config-btn2" class="btn btn-secondary">⚙️ Change Settings</button>
+			<!-- Settings -->
+			<div class="card">
+				<div class="card-title">⚙️ Settings</div>
+
+				<div id="server-info" class="server-info">
+					<div class="dot" id="server-dot"></div>
+					<span id="server-url-display">detecting…</span>
+				</div>
+
+				<div class="field">
+					<label>Reddit token_v2 cookie</label>
+					<input type="password" id="input-token" placeholder="Paste token_v2 value here…" autocomplete="off" />
+					<small>Get from: reddit.com → DevTools → Application → Cookies → token_v2</small>
+				</div>
+				<div class="field">
+					<label>Reddit reddit_session cookie</label>
+					<input type="password" id="input-session" placeholder="Paste reddit_session value here…" autocomplete="off" />
+					<small>Also from Cookies → reddit_session (required for auth)</small>
+				</div>
+				<div class="field">
+					<label>Feed endpoint</label>
+					<select id="input-feed">
+						<option value="hot">Hot - Trending now</option>
+						<option value="new">New - Latest posts</option>
+						<option value="rising">Rising - Gaining popularity</option>
+						<option value="top">Top - Highest rated</option>
+						<option value="controversial">Controversial - Most debated</option>
+						<option value="best">Best - Personalized feed</option>
+						<option value="r/popular">Popular - Across Reddit</option>
+						<option value="r/all">All - Everything</option>
+					</select>
+				</div>
+				<div class="field">
+					<label>Subreddit (leave empty for front page)</label>
+					<input type="text" id="input-subreddit" placeholder="e.g. technology" />
+				</div>
+				<div class="btn-row" style="margin-top: 4px">
+					<button class="btn primary" onclick="saveSettings()">💾 Save</button>
+					<button class="btn secondary" onclick="testAuth()">🔐 Test Auth</button>
+					<button class="btn secondary" onclick="clearCache()">🧼 Clear Cache</button>
+					<button class="btn danger" onclick="clearAll()">🗑 Clear All</button>
+				</div>
+			</div>
+
+			<!-- Console log -->
+			<div class="card">
+				<div class="card-title">
+					📋 Console Log
+					<span id="log-count" style="margin-left: 4px; color: var(--muted)"></span>
+				</div>
+				<div class="log-toolbar">
+					<div class="filters">
+						<button class="filter-btn active-log" id="f-log" onclick="toggleFilter('log')">LOG</button>
+						<button class="filter-btn active-warn" id="f-warn" onclick="toggleFilter('warn')">WARN</button>
+						<button class="filter-btn active-error" id="f-error" onclick="toggleFilter('error')">ERROR</button>
+					</div>
+					<button
+						class="btn secondary"
+						style="margin-left: auto; padding: 3px 8px; font-size: 11px"
+						onclick="copyLogs()"
+					>
+						📋 Copy
+					</button>
+					<button class="btn secondary" style="padding: 3px 8px; font-size: 11px" onclick="clearLogs()">Clear</button>
+					<button class="btn secondary" style="padding: 3px 8px; font-size: 11px" onclick="scrollLogsBottom()">
+						↓ Bottom
+					</button>
+				</div>
+				<div id="log-panel">
+					<div class="empty-state">No logs yet — waiting for app to start…</div>
+				</div>
+			</div>
 		</div>
+		<!-- /grid -->
 
 		<script>
-			// Handle Even Hub's mangled URL format
+			// ── Helpers ──────────────────────────────────────────────────────────────
+
+			var AUTH_KEY = 'reddit-client-auth';
+			var CONFIG_KEY = 'reddit-client-config';
+			var activeFilters = { log: true, warn: true, error: true };
+
 			function getBaseUrl() {
 				var href = window.location.href;
 				var pathname = window.location.pathname;
-
-				// If path contains 'http://', Even Hub mangled the URL
 				if (pathname.indexOf('http://') !== -1 || pathname.indexOf('https://') !== -1) {
 					var protocol = href.split('://')[0];
 					var rest = href.split('://')[1];
 					var host = rest.split('/')[0];
 					return protocol + '://' + host;
 				}
-
 				return window.location.origin;
 			}
 
-			function goToConfig() {
-				window.location.href = getBaseUrl() + '/config.html';
+			function serverBase() {
+				return 'http://' + window.location.hostname + ':3001';
 			}
 
-			function checkAuth() {
-				try {
-					var auth = localStorage.getItem('reddit-client-auth');
-					if (auth) {
-						return !!JSON.parse(auth).tokenV2;
-					}
-				} catch (e) {}
-				return false;
+			function fmt(ts) {
+				var d = new Date(ts);
+				return (
+					d.getHours().toString().padStart(2, '0') +
+					':' +
+					d.getMinutes().toString().padStart(2, '0') +
+					':' +
+					d.getSeconds().toString().padStart(2, '0')
+				);
 			}
 
-			function showState(state) {
-				['loading', 'setup', 'ready'].forEach(function (id) {
-					document.getElementById(id).classList.add('hidden');
-				});
-				document.getElementById(state).classList.remove('hidden');
+			function showToast(msg) {
+				var t = document.createElement('div');
+				t.className = 'toast';
+				t.textContent = msg;
+				document.body.appendChild(t);
+				setTimeout(function () {
+					t.remove();
+				}, 2500);
 			}
 
-			// Init
-			setTimeout(function () {
-				// Setup buttons
-				document.getElementById('config-btn').onclick = goToConfig;
-				document.getElementById('config-btn2').onclick = goToConfig;
+			// ── Log panel ────────────────────────────────────────────────────────────
 
-				// Check auth and show appropriate state
-				if (checkAuth()) {
-					showState('ready');
-					// Load main app
-					var s = document.createElement('script');
-					s.type = 'module';
-					s.src = 'src/main.ts';
-					document.body.appendChild(s);
+			function toggleFilter(level) {
+				activeFilters[level] = !activeFilters[level];
+				var btn = document.getElementById('f-' + level);
+				if (activeFilters[level]) {
+					btn.className = 'filter-btn active-' + level;
 				} else {
-					showState('setup');
+					btn.className = 'filter-btn';
 				}
-			}, 100);
+				renderLogs();
+			}
+
+			function renderLogs() {
+				var panel = document.getElementById('log-panel');
+				var logs = (window.__debugLogs || []).filter(function (l) {
+					return activeFilters[l.level];
+				});
+				document.getElementById('log-count').textContent = '(' + (window.__debugLogs || []).length + ')';
+				if (logs.length === 0) {
+					panel.innerHTML = '<div class="empty-state">No logs yet — waiting for app to start…</div>';
+					return;
+				}
+				var html = logs
+					.map(function (l) {
+						var escaped = l.msg.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+						return (
+							'<div class="log-entry">' +
+							'<span class="log-time">' +
+							fmt(l.ts) +
+							'</span>' +
+							'<span class="log-level ' +
+							l.level +
+							'">' +
+							l.level.toUpperCase() +
+							'</span>' +
+							'<span class="log-msg ' +
+							l.level +
+							'">' +
+							escaped +
+							'</span>' +
+							'</div>'
+						);
+					})
+					.join('');
+				panel.innerHTML = html;
+				panel.scrollTop = panel.scrollHeight;
+			}
+
+			function clearLogs() {
+				window.__debugLogs = [];
+				renderLogs();
+			}
+
+			function scrollLogsBottom() {
+				var p = document.getElementById('log-panel');
+				p.scrollTop = p.scrollHeight;
+			}
+
+			function copyLogs() {
+				var logs = window.__debugLogs || [];
+				if (logs.length === 0) {
+					showToast('No logs to copy');
+					return;
+				}
+
+				var text = logs
+					.map(function (l) {
+						var d = new Date(l.ts);
+						var time =
+							d.getHours().toString().padStart(2, '0') +
+							':' +
+							d.getMinutes().toString().padStart(2, '0') +
+							':' +
+							d.getSeconds().toString().padStart(2, '0');
+						return '[' + time + '] [' + l.level.toUpperCase() + '] ' + l.msg;
+					})
+					.join('\n');
+
+				navigator.clipboard
+					.writeText(text)
+					.then(function () {
+						showToast('✅ ' + logs.length + ' logs copied to clipboard');
+					})
+					.catch(function (err) {
+						showToast('Failed to copy: ' + err);
+					});
+			}
+
+			// ── State display ────────────────────────────────────────────────────────
+
+			function renderState() {
+				var s = window.__appState || {};
+
+				// Status badge
+				var badge = document.getElementById('status-badge');
+				var statusMap = {
+					starting: ['pending', 'Starting…'],
+					loading: ['pending', 'Loading feed…'],
+					ready: ['ok', 'Ready ✓'],
+					error: ['error', 'Error ✗'],
+					no_auth: ['pending', 'Setup required'],
+					auth_fail: ['error', 'Auth failed'],
+				};
+				var b = statusMap[s.status] || ['pending', s.status || '…'];
+				badge.className = 'badge ' + b[0];
+				badge.textContent = b[1];
+
+				// Stats
+				set(
+					'st-status',
+					s.status || '—',
+					s.status === 'ready' ? 'ok' : s.status === 'error' || s.status === 'auth_fail' ? 'error' : 'muted',
+				);
+				set('st-bridge', s.bridgeReady ? 'connected' : 'waiting', s.bridgeReady ? 'ok' : 'muted');
+				set('st-posts', String(s.posts || 0), s.posts > 0 ? 'ok' : 'muted');
+				set('st-view', s.view || '—', 'muted');
+				set('st-auth', s.hasAuth ? 'token set' : 'no token', s.hasAuth ? 'ok' : 'error');
+
+				// Error box
+				var eb = document.getElementById('error-box');
+				if (s.error) {
+					eb.textContent = s.error;
+					eb.className = 'error-box visible';
+				} else {
+					eb.className = 'error-box';
+				}
+			}
+
+			function set(id, val, cls) {
+				var el = document.getElementById(id);
+				if (!el) return;
+				el.textContent = val;
+				el.className = 'stat-value ' + (cls || 'muted');
+			}
+
+			// ── Server health ────────────────────────────────────────────────────────
+
+			async function checkServer() {
+				var url = serverBase() + '/api/health';
+				document.getElementById('server-url-display').textContent = serverBase();
+				Object.assign(window.__appState, { serverUrl: serverBase() });
+				try {
+					var r = await fetch(url, { signal: AbortSignal.timeout(3000) });
+					var ok = r.ok;
+					document.getElementById('server-dot').className = 'dot ' + (ok ? 'ok' : 'error');
+					set('st-server', ok ? 'online' : 'error ' + r.status, ok ? 'ok' : 'error');
+				} catch (e) {
+					document.getElementById('server-dot').className = 'dot error';
+					set('st-server', 'offline', 'error');
+					console.warn('[Debug] Server health check failed:', String(e));
+				}
+			}
+
+			// ── Settings ─────────────────────────────────────────────────────────────
+
+			function loadSettings() {
+				try {
+					var auth = JSON.parse(localStorage.getItem(AUTH_KEY) || '{}');
+					var cfg = JSON.parse(localStorage.getItem(CONFIG_KEY) || '{}');
+					if (auth.tokenV2) document.getElementById('input-token').value = auth.tokenV2;
+					if (auth.session) document.getElementById('input-session').value = auth.session;
+					if (cfg.feed) {
+						document.getElementById('input-feed').value = cfg.feed.endpoint || 'hot';
+						document.getElementById('input-subreddit').value = cfg.feed.subreddit || '';
+					}
+					Object.assign(window.__appState, { hasAuth: !!(auth.tokenV2 && auth.session) });
+				} catch (e) {
+					console.error('[Debug] Failed to load settings:', e);
+				}
+			}
+
+			function saveSettings() {
+				var token = document.getElementById('input-token').value.trim();
+				var session = document.getElementById('input-session').value.trim();
+				var endpoint = document.getElementById('input-feed').value;
+				var subreddit = document.getElementById('input-subreddit').value.trim();
+
+				if (token && session) {
+					var auth = {
+						tokenV2: token,
+						session: session,
+						userAgent: 'reddit-client-even/1.0',
+						savedAt: new Date().toISOString(),
+					};
+					localStorage.setItem(AUTH_KEY, JSON.stringify(auth));
+				} else if (token || session) {
+					alert('Both token_v2 and reddit_session are required to authenticate.');
+					return;
+				}
+				var cfg = { feed: { endpoint: endpoint, subreddit: subreddit, limit: 25, time: 'day' } };
+				localStorage.setItem(CONFIG_KEY, JSON.stringify(cfg));
+
+				Object.assign(window.__appState, { hasAuth: !!token });
+				renderState();
+				showToast('✅ Settings saved - Reloading app in 3s');
+
+				setTimeout(() => {
+					window.location.reload();
+				}, 3000);
+			}
+
+			function clearAll() {
+				if (!confirm('Clear all saved auth and settings?')) return;
+				localStorage.removeItem(AUTH_KEY);
+				localStorage.removeItem(CONFIG_KEY);
+				document.getElementById('input-token').value = '';
+				document.getElementById('input-session').value = '';
+				Object.assign(window.__appState, { hasAuth: false });
+				renderState();
+				showToast('🗑 Cleared — reload to restart');
+			}
+
+			async function testAuth() {
+				var token = document.getElementById('input-token').value.trim();
+				var session = document.getElementById('input-session').value.trim();
+
+				if (!token) {
+					showToast('No token entered', 'error');
+					return;
+				}
+
+				showToast('Testing auth...');
+
+				try {
+					var headers = {
+						'X-Reddit-Token': token,
+						'X-Reddit-User-Agent': 'reddit-client-even/1.0',
+					};
+					if (session) headers['X-Reddit-Session'] = session;
+
+					var response = await fetch(serverBase() + '/api/test-auth', { headers });
+					var data = await response.json();
+
+					if (data.authenticated) {
+						showToast('✓ Auth working! User: u/' + data.username);
+					} else {
+						showToast('✗ Auth failed: ' + (data.error || 'Unknown error'), 'error');
+					}
+				} catch (err) {
+					showToast('Auth test error: ' + err.message, 'error');
+				}
+			}
+
+			async function clearCache() {
+				if (!confirm('Clear cache and reload posts?')) return;
+
+				try {
+					// Clear IndexedDB
+					var databases = await indexedDB.databases();
+					for (var db of databases) {
+						if (db.name && db.name.includes('reddit')) {
+							await new Promise(function (resolve, reject) {
+								var req = indexedDB.deleteDatabase(db.name);
+								req.onsuccess = resolve;
+								req.onerror = reject;
+							});
+							console.log('[Debug] Deleted IndexedDB:', db.name);
+						}
+					}
+
+					// Clear localStorage cache entries (keep auth and config)
+					var keysToRemove = [];
+					for (var i = 0; i < localStorage.length; i++) {
+						var key = localStorage.key(i);
+						if (key && key.includes('reddit-client-db')) {
+							keysToRemove.push(key);
+						}
+					}
+					keysToRemove.forEach(function (key) {
+						localStorage.removeItem(key);
+						console.log('[Debug] Cleared localStorage:', key);
+					});
+
+					showToast('🧼 Cache cleared - reload to refresh posts');
+				} catch (err) {
+					console.error('[Debug] Failed to clear cache:', err);
+					showToast('Failed to clear cache: ' + err.message, 'error');
+				}
+			}
+
+			// ── Boot ─────────────────────────────────────────────────────────────────
+
+			window.__refreshDebug = function () {
+				renderLogs();
+				renderState();
+			};
+
+			window.addEventListener('DOMContentLoaded', function () {
+				loadSettings();
+				renderState();
+				renderLogs();
+				checkServer();
+				// Re-check server every 10 s
+				setInterval(checkServer, 10000);
+			});
 		</script>
 	</body>
 </html>
