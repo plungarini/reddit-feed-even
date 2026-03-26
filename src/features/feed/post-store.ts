@@ -32,7 +32,7 @@ export interface PostStoreState {
 }
 
 export class PostStore {
-	private state: PostStoreState = {
+	private readonly state: PostStoreState = {
 		posts: [],
 		currentPage: 0,
 		postsPerPage: 4,
@@ -48,9 +48,9 @@ export class PostStore {
 		expandedComments: new Set(),
 	};
 
-	private listeners: PostStoreListener[] = [];
-	private cache: PostCache;
-	private client: RedditClient;
+	private readonly listeners: PostStoreListener[] = [];
+	private readonly cache: PostCache;
+	private readonly client: RedditClient;
 	private currentFeed: FeedConfig | null = null;
 	private afterCursor: string | null = null;
 
@@ -183,7 +183,7 @@ export class PostStore {
 			this.state.loadingMore = true;
 			this.notify();
 
-			await new Promise((resolve) => setTimeout(resolve, 1000));
+			await new Promise((resolve) => setTimeout(resolve, 500));
 
 			this.state.currentPage = nextPage;
 			this.state.loadingMore = false;

@@ -38,10 +38,10 @@ const FOOTER_Y = POSTS_PER_PAGE * POST_H; //           256 px
 const FOOTER_H = 288 - FOOTER_Y; //                    32 px
 const POST_PAD = 3; // padding inside each post row
 const FOOTER_PAD = 2; // tighter padding for the narrow footer
-const MAX_POST_TITLE_LEN = 60;
+const MAX_POST_TITLE_LEN = 58;
 
 export class FeedView {
-	private bridge: EvenAppBridge;
+	private readonly bridge: EvenAppBridge;
 
 	constructor(bridge: EvenAppBridge) {
 		this.bridge = bridge;
@@ -69,6 +69,8 @@ export class FeedView {
 
 		const containers: TextContainerProperty[] = [];
 
+		const isAtTopBoundary = pageIndex === 0 && highlightedIndex === 0;
+
 		// ── Post rows (0 – 3) ────────────────────────────────────────────────────
 		for (let i = 0; i < POSTS_PER_PAGE; i++) {
 			const post = pagePosts[i] ?? null;
@@ -86,7 +88,8 @@ export class FeedView {
 					paddingLength: POST_PAD,
 					containerID: i + 1,
 					containerName: `post${i}`,
-					isEventCapture: i === 0 && !loadingMore ? 1 : 0,
+					// Only capture events on first post if we aren't loading AND not at the top
+					isEventCapture: i === 0 && !loadingMore && !isAtTopBoundary ? 1 : 0,
 					content: post ? formatPost(post) : '',
 				}),
 			);
@@ -106,8 +109,23 @@ export class FeedView {
 				paddingLength: FOOTER_PAD,
 				containerID: POSTS_PER_PAGE + 1,
 				containerName: 'footer',
-				isEventCapture: 0,
+				isEventCapture: 0, // Footer never captures events (it was too bouncy)
 				content: footerContent,
+			}),
+		);
+
+		// ── Invisible Event Shield (index 5) ───────────────────────────
+		// This container "swallows" the bounce animation when we want the UI frozen
+		containers.push(
+			new TextContainerProperty({
+				xPosition: 0,
+				yPosition: 0,
+				width: WIDTH,
+				height: 288,
+				isEventCapture: loadingMore || isAtTopBoundary ? 1 : 0,
+				content: '',
+				containerID: POSTS_PER_PAGE + 2,
+				containerName: 'event_shield',
 			}),
 		);
 
@@ -116,14 +134,12 @@ export class FeedView {
 				`posts=${pagePosts.length} hasMore=${hasMore} loadingMore=${loadingMore}`,
 		);
 
-		const ok = await this.bridge.rebuildPageContainer(
+		await this.bridge.rebuildPageContainer(
 			new RebuildPageContainer({
-				containerTotalNum: POSTS_PER_PAGE + 1,
+				containerTotalNum: POSTS_PER_PAGE + 2,
 				textObject: containers,
 			}),
 		);
-
-		console.log('[FeedView] rebuildPageContainer:', ok);
 	}
 }
 
