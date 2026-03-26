@@ -32,8 +32,8 @@ const ITEM_WIDTH = 552;
 const MAX_ITEM_CHARS = 60;
 
 export class CommentView {
-  private bridge: EvenAppBridge;
-  private expandedComments = new Set<string>();
+  private readonly bridge: EvenAppBridge;
+  private readonly expandedComments = new Set<string>();
   private visibleComments: RedditComment[] = [];
 
   constructor(bridge: EvenAppBridge) {
@@ -111,7 +111,7 @@ export class CommentView {
 
     const score = fmtScore(c.score);
     const body = c.body.length > 40 ? c.body.substring(0, 37) + '...' : c.body;
-    const text = `${indent}${prefix}▲${score} u/${c.author} | ${body}`;
+    const text = `${indent}${prefix}^${score} u/${c.author} | ${body}`;
     return text.length > MAX_ITEM_CHARS ? text.substring(0, MAX_ITEM_CHARS - 1) + '…' : text;
   }
 

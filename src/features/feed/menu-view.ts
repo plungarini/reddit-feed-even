@@ -14,7 +14,7 @@ import {
 export interface MenuItem {
 	id: string;
 	label: string;
-	icon?: string;
+	desc: string;
 }
 
 export class MenuView {
@@ -27,9 +27,8 @@ export class MenuView {
 	/**
 	 * Render menu with items
 	 */
-	async render(items: MenuItem[], selectedIndex: number = 0): Promise<void> {
-		const displayItems = items.slice(0, 15);
-		const itemNames = displayItems.map((item, index) => this.formatItem(item, index === selectedIndex));
+	async render(): Promise<void> {
+		const itemNames = this.getFeedItems().map((item) => `${item.label} - ${item.desc}`);
 
 		const container = new CreateStartUpPageContainer({
 			containerTotalNum: 1,
@@ -60,42 +59,18 @@ export class MenuView {
 	}
 
 	/**
-	 * Format a menu item
-	 */
-	private formatItem(item: MenuItem, isSelected: boolean): string {
-		const prefix = isSelected ? '▶ ' : '  ';
-		const icon = item.icon ? `${item.icon} ` : '';
-		return `${prefix}${icon}${item.label}`;
-	}
-
-	/**
-	 * Get default menu items
-	 */
-	static getDefaultItems(): MenuItem[] {
-		return [
-			{ id: 'refresh', label: 'Refresh Feed', icon: '↻' },
-			{ id: 'upvote', label: 'Upvote Post', icon: '▲' },
-			{ id: 'downvote', label: 'Downvote Post', icon: '▼' },
-			{ id: 'hide', label: 'Hide Post', icon: '✓' },
-			{ id: 'save', label: 'Save Post', icon: '★' },
-			{ id: 'comments', label: 'View Comments', icon: '💬' },
-			{ id: 'back', label: 'Go Back', icon: '←' },
-		];
-	}
-
-	/**
 	 * Get feed selection items
 	 */
-	static getFeedItems(): MenuItem[] {
+	getFeedItems(): MenuItem[] {
 		return [
-			{ id: 'best', label: 'Best (Personalized)', icon: '★' },
-			{ id: 'hot', label: 'Hot', icon: '🔥' },
-			{ id: 'new', label: 'New', icon: '🆕' },
-			{ id: 'rising', label: 'Rising', icon: '📈' },
-			{ id: 'top', label: 'Top', icon: '🏆' },
-			{ id: 'controversial', label: 'Controversial', icon: '⚡' },
-			{ id: 'r/popular', label: 'Popular', icon: '🌍' },
-			{ id: 'r/all', label: 'All', icon: '🌐' },
+			{ id: 'best', label: 'Best', desc: 'Personalized feed' },
+			{ id: 'hot', label: 'Hot', desc: 'Trending now' },
+			{ id: 'new', label: 'New', desc: 'Latest posts' },
+			{ id: 'rising', label: 'Rising', desc: 'Gaining popularity' },
+			{ id: 'top', label: 'Top', desc: 'Highest rated' },
+			{ id: 'controversial', label: 'Controversial', desc: 'Most debated' },
+			{ id: 'r/popular', label: '[R] Popular', desc: 'Across Reddit' },
+			{ id: 'r/all', label: '[R] All', desc: 'Everything' },
 		];
 	}
 }
