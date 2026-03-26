@@ -5,9 +5,9 @@
  * Handles deduplication and seen post filtering.
  */
 
-import { FeedConfig, CachedPost, SyncResult } from '../../types';
-import { RedditClient } from '../reddit/client';
-import { PostCache } from '../cache/post-cache';
+import { FeedConfig, CachedPost, SyncResult } from '../../core/types';
+import { RedditClient } from '../../api/reddit-client';
+import { PostCache } from '../../shared/storage/cache';
 
 export type SyncStatus = 'idle' | 'running' | 'error';
 
@@ -164,4 +164,4 @@ export class SyncEngine {
 }
 
 // Re-export for convenience
-export type { SyncResult } from '../../types';
+export type { SyncResult } from '../../core/types';

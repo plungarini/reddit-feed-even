@@ -5,8 +5,8 @@
  * which sets Cookie headers server-side — the browser Fetch API cannot.
  */
 
-import { FeedConfig, RedditClientInterface, RedditComment, RedditListing, RedditPost } from '../../types';
-import { AuthManager } from './auth';
+import { FeedConfig, RedditClientInterface, RedditComment, RedditListing, RedditPost } from '../core/types';
+import { AuthManager } from './auth-manager';
 import { RateLimiter } from './rate-limiter';
 
 export class RedditClient implements RedditClientInterface {

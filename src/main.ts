@@ -16,18 +16,18 @@ import {
 	TextContainerProperty,
 	waitForEvenAppBridge,
 } from '@evenrealities/even_hub_sdk';
-import { DEFAULT_CONFIG } from './config/app-config';
-import { PostCache } from './services/cache/post-cache';
-import { StorageService } from './services/cache/storage';
-import { AuthManager } from './services/reddit/auth';
-import { RedditClient } from './services/reddit/client';
-import { RateLimiter } from './services/reddit/rate-limiter';
-import { PostStore } from './state/post-store';
-import { UIManager } from './state/ui-manager';
-import type { AppConfig } from './types';
-import { CommentView } from './ui/components/comment-view';
-import { DetailView } from './ui/components/detail-view';
-import { FeedView } from './ui/components/feed-view';
+import { DEFAULT_CONFIG } from './core/config';
+import { PostCache } from './shared/storage/cache';
+import { StorageService } from './shared/storage/storage';
+import { AuthManager } from './api/auth-manager';
+import { RedditClient } from './api/reddit-client';
+import { RateLimiter } from './api/rate-limiter';
+import { PostStore } from './features/feed/post-store';
+import { UIManager } from './core/ui-manager';
+import type { AppConfig } from './core/types';
+import { CommentView } from './features/comments/comment-view';
+import { DetailView } from './features/detail/detail-view';
+import { FeedView } from './features/feed/feed-view';
 
 /** Must match FeedView.POSTS_PER_PAGE */
 const CONFIG_KEY = 'reddit-client-config';
@@ -44,7 +44,7 @@ type Bridge = Awaited<ReturnType<typeof waitForEvenAppBridge>>;
 // ─── Debug panel ────────────────────────────────────────────────────────────
 
 function debugState(update: Record<string, unknown>) {
-	window.dispatchEvent(new CustomEvent('app:state', { detail: update }));
+	globalThis.dispatchEvent(new CustomEvent('app:state', { detail: update }));
 }
 
 // ─── Bootstrap ──────────────────────────────────────────────────────────────

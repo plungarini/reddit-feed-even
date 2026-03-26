@@ -24,7 +24,7 @@ import {
   ListContainerProperty,
   ListItemContainerProperty,
 } from '@evenrealities/even_hub_sdk';
-import { RedditComment } from '../../types';
+import { RedditComment } from '../../core/types';
 
 const CONTAINER_WIDTH = 560;
 const CONTAINER_HEIGHT = 272;

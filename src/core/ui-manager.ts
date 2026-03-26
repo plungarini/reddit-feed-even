@@ -7,7 +7,7 @@
  * - Preserves feed page and highlight position
  */
 
-import { ViewMode } from '../types';
+import { ViewMode } from './types';
 
 export interface NavigationEntry {
   view: ViewMode;

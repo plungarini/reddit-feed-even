@@ -11,7 +11,7 @@
  * - Configurable size limits
  */
 
-import { CachedPost, FeedConfig, CacheEntry } from '../../types';
+import { CachedPost, FeedConfig, CacheEntry } from '../../core/types';
 import { StorageService } from './storage';
 
 interface CacheOptions {

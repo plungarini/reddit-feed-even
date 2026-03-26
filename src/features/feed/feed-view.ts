@@ -28,7 +28,7 @@
  */
 
 import { EvenAppBridge, RebuildPageContainer, TextContainerProperty } from '@evenrealities/even_hub_sdk';
-import { CachedPost } from '../../types';
+import { CachedPost } from '../../core/types';
 
 export const POSTS_PER_PAGE = 4;
 

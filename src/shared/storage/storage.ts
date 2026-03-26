@@ -6,7 +6,7 @@
  */
 
 import { DBSchema, IDBPDatabase, openDB } from 'idb';
-import { CachedPost } from '../../types';
+import { CachedPost } from '../../core/types';
 
 interface RedditClientDB extends DBSchema {
 	posts: {

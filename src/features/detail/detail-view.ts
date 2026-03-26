@@ -21,7 +21,7 @@ import {
   RebuildPageContainer,
   TextContainerProperty,
 } from '@evenrealities/even_hub_sdk';
-import { CachedPost } from '../../types';
+import { CachedPost } from '../../core/types';
 
 const MAX_CHARS = 1000; // SDK limit for rebuild
 

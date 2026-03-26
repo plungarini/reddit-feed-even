@@ -6,7 +6,7 @@
  */
 
 import { SyncEngine, SyncResult } from './sync-engine';
-import { FeedConfig } from '../../types';
+import { FeedConfig } from '../../core/types';
 
 export class SyncScheduler {
   private engine: SyncEngine;

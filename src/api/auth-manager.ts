@@ -6,7 +6,7 @@
  * This class just manages the token/config and builds headers for the proxy.
  */
 
-import { AuthConfig } from '../../types';
+import { AuthConfig } from '../core/types';
 
 export class AuthManager {
 	private config: AuthConfig;

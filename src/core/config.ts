@@ -4,7 +4,7 @@
  * Highly customizable settings for Reddit endpoints, caching, and UI behavior.
  */
 
-import { AppConfig, AuthConfig, FeedConfig, SyncConfig, CacheConfig, UIConfig } from '../types';
+import { AppConfig, AuthConfig, FeedConfig, SyncConfig, CacheConfig, UIConfig } from './types';
 
 export const DEFAULT_AUTH: AuthConfig = {
   type: 'cookie',

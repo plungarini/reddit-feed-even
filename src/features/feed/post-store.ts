@@ -8,9 +8,9 @@
  * - Comment tree with toggleable collapse/expand
  */
 
-import { CachedPost, FeedConfig, RedditComment } from '../types';
-import { PostCache } from '../services/cache/post-cache';
-import { RedditClient } from '../services/reddit/client';
+import { CachedPost, FeedConfig, RedditComment } from '../../core/types';
+import { PostCache } from '../../shared/storage/cache';
+import { RedditClient } from '../../api/reddit-client';
 
 type PostStoreListener = () => void;
 

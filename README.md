@@ -1,61 +1,20 @@
 # Reddit Client for Even Realities G2
 
-A full-featured Reddit client optimized for Even Realities G2 smart glasses. Browse feeds, read comments, and interact with posts using simple gestures.
+A fast, modular Reddit client optimized for Even Realities G2 smart glasses.
 
-![Platform](https://img.shields.io/badge/platform-Even%20G2-green)
-![SDK](https://img.shields.io/badge/sdk-0.0.9-blue)
-![License](https://img.shields.io/badge/license-MIT-yellow)
+## 🚀 Quick Start (Auth)
 
-## Features
+1.  **Get Credentials**:
+    - Log in to [reddit.com](https://www.reddit.com).
+    - Open DevTools (F12) → **Application** → **Cookies**.
+    - Copy the values for `token_v2` and `reddit_session`.
+2.  **Configure**:
+    - Open the [Debug Panel](https://plungarini.github.io/reddit-client-even/) (or local dev).
+    - Enter your credentials in the auth section and save.
+3.  **Run on G2**:
+    - Open the Even app and add the app URL: `https://plungarini.github.io/reddit-client-even/`.
 
-- **Multiple Feed Endpoints**: Best, Hot, New, Rising, Top, Controversial, r/popular, r/all
-- **Subreddit Support**: Browse any subreddit with configurable sorting
-- **Post Interactions**: Upvote, downvote, hide, and save posts
-- **Comments**: View top comments for any post
-- **Background Sync**: Auto-refresh feeds at configurable intervals
-- **Smart Caching**: Multi-level caching with seen post tracking
-- **Rate Limit Management**: Automatic throttling to respect Reddit limits
-- **Cookie-based Auth**: Simple authentication using Reddit session cookies
-
-## Configuration (One-Time Setup)
-
-The Reddit Client uses a **separate configuration page** for authentication, similar to how DisplayPlusMusic handles Spotify auth.
-
-### Quick Setup
-
-1. **Visit the config page:**
-   - Production: https://plungarini.github.io/reddit-client-even/config.html
-   - Local dev: http://localhost:5173/config.html
-
-2. **Get your Reddit token:**
-   - Open [reddit.com](https://www.reddit.com) and log in
-   - Press **F12** (or Cmd+Option+I on Mac) to open DevTools
-   - Go to **Application** → **Cookies** → **https://www.reddit.com**
-   - Find `token_v2` and copy its value
-
-3. **Configure the app:**
-   - Paste your token in the config page
-   - Choose your default feed (Hot, New, Top, etc.)
-   - Set auto-refresh preferences
-   - Click **Save All Settings**
-
-4. **Use on G2:**
-   - Your settings are stored in localStorage (shared with Safari WebView)
-   - Open the Reddit Client app on your G2 glasses
-   - Everything works automatically!
-
-### How It Works
-
-The configuration is stored in your browser's `localStorage`. Since the Even Hub WebView shares storage with Safari on iOS, the G2 app can read the same configuration you saved on the config page.
-
-```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│  Config Page    │────▶│  localStorage   │◀────│  G2 App (WebView│
-│  (GitHub Pages) │     │  (iOS Safari)   │     │  / Even Hub)    │
-└─────────────────┘     └─────────────────┘     └─────────────────┘
-```
-
-## Controls
+## 🎮 Controls
 
 | Gesture | Action |
 |---------|--------|
@@ -64,329 +23,28 @@ The configuration is stored in your browser's `localStorage`. Since the Even Hub
 | Single Tap | Open post / View comments |
 | Double Tap | Go back / Open menu |
 
-## Development
-
-### Prerequisites
-
-- Node.js 18+
-- Even Realities G2 glasses paired with the Even app
-
-### Local Development
+## 🛠️ Development
 
 ```bash
-# Clone the repository
-git clone git@github.com:plungarini/reddit-client-even.git
-cd reddit-client-even
-
-# Install dependencies
-npm install
-
-# Start development server
-npm run dev
+npm install     # Install dependencies
+npm run dev     # Start local server (port 5173)
+npm run build   # Production build (dist/)
+npm run qr      # Generate G2 connection QR code
 ```
 
-The dev server will start at `http://localhost:5173`. 
+## 🏗️ Architecture
 
-**Important:** Visit `http://localhost:5173/config.html` first to configure your Reddit auth before testing the app.
+- `server/`: Express proxy with `X-Reddit-*` header translation.
+- `src/api/`: Reddit client, rate limiting, and auth management.
+- `src/features/`: Domain logic for feed, comments, and background sync.
+- `src/core/`: Types, config, and global UI state.
+- `src/shared/`: IndexedDB storage and caching.
 
-### Running on G2 Glasses
+## 📦 Tech Stack
 
-There are **three ways** to load the app on your G2 glasses:
+- **Core**: TypeScript, Vite.
+- **UI**: Even Hub SDK, Vanilla CSS.
+- **Storage**: IndexedDB (via `idb`).
 
-#### Option 1: GitHub Pages (Production) - Recommended
-
-The easiest way - no setup required:
-
-1. Open the **Even app** on your iPhone
-2. Tap **"Add App"** or **"+"**
-3. Enter this URL: `https://plungarini.github.io/reddit-client-even/`
-4. The app will load on your glasses!
-
-Or use the QR code generator:
-```bash
-# In the repo directory
-npx evenhub qr --url "https://plungarini.github.io/reddit-client-even/"
-```
-
-#### Option 2: Local Development
-
-For testing changes on your local machine:
-
-```bash
-# Terminal 1: Start dev server
-npm run dev
-
-# Terminal 2: Get your local IP and generate QR
-npm run qr
-# OR manually:
-npx evenhub qr --http --port 5173
-```
-
-**Important:** Your iPhone and computer must be on the **same WiFi network**.
-
-#### Option 3: Custom Hosting
-
-Host on your own server (Vercel, Netlify, etc.):
-
-```bash
-# Build the app
-npm run build
-
-# Deploy the dist/ folder to your host
-# Then use your URL:
-npx evenhub qr --url "https://your-domain.com/"
-```
-
-### QR Code Not Working?
-
-If the QR code doesn't scan or the app won't load:
-
-1. **Check the URL format** - Even Hub requires a full URL with `https://`
-2. **Verify network access** - iPhone must reach the URL
-3. **Try manual entry** - Type the URL directly in the Even app instead of QR
-4. **Check for typos** - URLs are case-sensitive
-
-**Production URL:**
-```
-https://plungarini.github.io/reddit-client-even/
-```
-
-**Staging URL (for testing):**
-```
-https://plungarini.github.io/reddit-client-even/staging/
-```
-
-### Building for Production
-
-```bash
-npm run build
-```
-
-This creates a `dist/` folder with the built app. The config page (`config.html`) is automatically included.
-
-### Deploying to GitHub Pages
-
-1. Push your code to GitHub
-2. Go to **Settings** → **Pages** in your repo
-3. Select **GitHub Actions** as the source
-4. The workflow (`.github/workflows/deploy.yml`) will auto-deploy on push
-
-Your app will be available at:
-- **Production**: `https://plungarini.github.io/reddit-client-even/` (from `master` branch)
-- **Staging**: `https://plungarini.github.io/reddit-client-even/staging/` (from `develop` branch)
-- **Config**: `https://plungarini.github.io/reddit-client-even/config.html`
-
-### Environments
-
-We maintain two environments for testing and production:
-
-| Environment | Branch | URL | Purpose |
-|-------------|--------|-----|---------|
-| Production | `master` | `/` | Stable releases for end users |
-| Staging | `develop` | `/staging/` | Testing new features before release |
-
-**Deployment Flow:**
-1. Push to `develop` branch → Auto-deploys to staging
-2. Test on staging environment
-3. Merge to `master` branch → Auto-deploys to production
-
-The staging environment uses the same localStorage as production, so you can test with your existing configuration.
-
-## Architecture
-
-```
-src/
-├── services/
-│   ├── reddit/          # Reddit API client
-│   │   ├── client.ts    # HTTP client with auth
-│   │   ├── auth.ts      # Authentication manager
-│   │   └── rate-limiter.ts
-│   ├── cache/           # Caching layer
-│   │   ├── storage.ts   # IndexedDB storage
-│   │   └── post-cache.ts
-│   └── sync/            # Background sync
-│       ├── sync-engine.ts
-│       └── scheduler.ts
-├── state/               # Reactive state management
-│   ├── post-store.ts
-│   └── ui-manager.ts
-├── ui/                  # Even Hub UI components
-│   └── components/
-│       ├── feed-view.ts
-│       ├── detail-view.ts
-│       ├── comment-view.ts
-│       └── menu-view.ts
-├── config/
-│   └── app-config.ts    # Default configuration
-├── types/
-│   └── index.ts         # Type definitions
-└── main.ts              # App entry point
-```
-
-### Configuration System
-
-The app uses a two-part configuration system:
-
-1. **Auth Storage** (`reddit-client-auth` localStorage key):
-   ```typescript
-   {
-     tokenV2: string;
-     userAgent: string;
-     savedAt: string;
-   }
-   ```
-
-2. **Config Storage** (`reddit-client-config` localStorage key):
-   ```typescript
-   {
-     feed: { endpoint, subreddit, sort, time, limit };
-     sync: { enabled, intervalMinutes };
-   }
-   ```
-
-### Reddit API Endpoints
-
-The app supports all major Reddit feed endpoints:
-
-| Endpoint | Auth Required | Description |
-|----------|---------------|-------------|
-| `/best` | Yes | Personalized best feed |
-| `/hot` | No | Currently trending posts |
-| `/new` | No | Newest posts first |
-| `/rising` | No | Posts gaining popularity |
-| `/top` | No | Top posts by time period |
-| `/controversial` | No | Most controversial posts |
-| `/r/popular` | No | Popular across Reddit |
-| `/r/all` | No | Posts from all of Reddit |
-| `/r/{subreddit}` | No | Specific subreddit feed |
-
-## Scripts
-
-```bash
-npm run dev          # Start development server
-npm run build        # Production build
-npm run preview      # Preview production build
-npm run qr           # Generate QR code for G2
-npm run pack         # Build and package as .ehpk
-npm run test         # Run tests
-npm run typecheck    # TypeScript type checking
-```
-
-## API Access (Debug)
-
-The app exposes a global API for debugging in browser console:
-
-```javascript
-// Navigation
-window.redditClient.next()           // Next post
-window.redditClient.prev()           // Previous post
-window.redditClient.view('comments') // View comments
-window.redditClient.back()           // Go back
-
-// Feed
-window.redditClient.loadFeed('hot')  // Load specific feed
-window.redditClient.refresh()        // Refresh current feed
-
-// Interactions
-window.redditClient.upvote()         // Upvote current post
-window.redditClient.downvote()       // Downvote current post
-window.redditClient.hide()           // Hide current post
-window.redditClient.save()           // Save current post
-
-// Sync
-window.redditClient.sync()           // Trigger manual sync
-window.redditClient.syncStatus()     // Get sync status
-
-// Config
-window.redditClient.config()         // Get current config
-window.redditClient.reloadConfig()   // Reload from localStorage
-
-// Stats
-window.redditClient.cacheStats()     // Get cache statistics
-window.redditClient.storageStats()   // Get storage statistics
-```
-
-## Caching Strategy
-
-The app uses a two-level caching system:
-
-1. **Memory Cache**: LRU cache for current session (fast access)
-2. **IndexedDB**: Persistent storage across sessions
-
-Cache keys are generated from feed configuration for proper isolation. Seen posts are tracked separately for deduplication.
-
-## Rate Limiting
-
-Reddit API rate limits are automatically tracked and respected:
-
-- **OAuth**: 60 requests/minute
-- **Cookie-based**: ~30-40 requests/minute
-- **Unauthenticated**: ~10-20 requests/minute
-
-The app automatically throttles requests when approaching limits based on response headers.
-
-## Security
-
-- Auth tokens stored in localStorage (device only)
-- No sensitive data logged to console
-- All Reddit requests use HTTPS
-- Rate limiting prevents API abuse
-- Token never sent to any third-party server
-
-## Troubleshooting
-
-### "Open Configuration" Button Not Working
-
-If clicking "Open Configuration" doesn't navigate to the config page:
-
-1. **You're on GitHub Pages** - The config page is at: `https://plungarini.github.io/reddit-client-even/config.html`
-   - Manually navigate to this URL in your browser
-   - Or tap and hold the button, then select "Open in New Tab"
-
-2. **You're on local development** - Make sure both `index.html` and `config.html` are in the same directory
-   - Try: `http://localhost:5173/config.html`
-
-3. **Try the direct link:**
-   - Production: https://plungarini.github.io/reddit-client-even/config.html
-   - Staging: https://plungarini.github.io/reddit-client-even/staging/config.html
-   - Local: http://localhost:5173/config.html
-
-### "Setup Required" message on G2
-
-1. Visit the config page on your iPhone's Safari browser
-2. Enter your Reddit token and save
-3. Re-open the Reddit Client app on G2
-
-**Important:** The configuration is saved to your iPhone's Safari localStorage. If you use a different browser (Chrome, Firefox), the G2 app won't see the configuration. Always use Safari on iOS.
-
-### Authentication Issues
-
-If you see auth errors:
-1. Token may have expired - get a fresh one from reddit.com
-2. Visit config page and update your token
-3. Tap "Clear All Data" in config if issues persist
-
-### Rate Limiting
-
-If you see rate limit errors:
-1. Reduce sync interval in config (try 60 minutes)
-2. Lower posts per fetch (try 10-15)
-3. Wait for rate limit reset
-
-### Feed Not Loading
-
-1. Check that you have internet connection
-2. Verify token is still valid (visit reddit.com)
-3. Try a different feed endpoint
-4. Check G2 connection status
-
-## License
-
-MIT License - see LICENSE file for details
-
-## Acknowledgments
-
-- Based on [reddit-pi](https://github.com/plungarini/pi) service architecture
-- Configuration approach inspired by [DisplayPlusMusic](https://github.com/Oliemanq/DisplayPlusMusic)
-- Built for [Even Realities G2](https://www.evenrealities.com)
-- Uses [Even Hub SDK](https://www.npmjs.com/package/@evenrealities/even_hub_sdk)
+---
+MIT License | Built for [Even Realities G2](https://www.evenrealities.com)
