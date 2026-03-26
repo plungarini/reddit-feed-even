@@ -4,6 +4,7 @@ node_modules/
 # Build output
 dist/
 *.tsbuildinfo
+.wrangler
 
 # Even Hub package files
 *.ehpk

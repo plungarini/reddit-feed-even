@@ -1,15 +1,9 @@
-/**
- * Reddit Client — Backend Proxy Server
- */
-
-import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import healthRouter from './routes/health.js';
-import redditRouter from './routes/reddit.js';
+import healthRouter from './routes/health';
+import redditRouter from './routes/reddit';
 
 const app = new Hono();
-const PORT = Number(process.env.SERVER_PORT ?? 3001);
 
 app.use('*', cors());
 
@@ -23,11 +17,4 @@ app.use('*', async (c, next) => {
 app.route('/api/health', healthRouter);
 app.route('/api', redditRouter);
 
-// ─── Start ────────────────────────────────────────────────────────────────────
-console.log(`[Server] Reddit proxy starting on http://0.0.0.0:${PORT}`);
-console.log(`[Server] Routes: /api/health | /api/test-auth | /api/reddit/*`);
-
-serve({
-	fetch: app.fetch,
-	port: PORT,
-});
+export default app;

@@ -27,7 +27,7 @@ router.get('/test-auth', async (c) => {
 		});
 
 		const text = await response.text();
-		
+
 		if (response.status === 305 || response.status === 302 || response.status === 301) {
 			return c.json({
 				status: response.status,
@@ -65,14 +65,9 @@ router.get('/test-auth', async (c) => {
 });
 
 // ─── Reddit API proxy ───────────────────
-router.all('/reddit/*', async (c) => {
+router.all('/reddit/:proxyPath{.+}', async (c) => {
 	try {
-		// In Hono, c.req.path is the full path. 
-		// We want to extract the part after /reddit
-		const path = c.req.path.includes('/reddit/') 
-			? c.req.path.split('/reddit/')[1] 
-			: c.req.path.replace('/reddit', '');
-		
+		const path = c.req.param('proxyPath');
 		const redditUrl = new URL(`https://www.reddit.com/${path}`);
 		const query = c.req.query();
 		for (const [k, v] of Object.entries(query)) {
@@ -102,9 +97,12 @@ router.all('/reddit/*', async (c) => {
 		});
 
 		if (!response.ok) {
-			return c.json({
-				error: `Reddit API error: ${response.status}`,
-			}, response.status as any);
+			return c.json(
+				{
+					error: `Reddit API error: ${response.status}`,
+				},
+				response.status as any,
+			);
 		}
 
 		const text = await response.text();
