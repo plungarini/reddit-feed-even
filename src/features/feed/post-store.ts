@@ -8,335 +8,327 @@
  * - Comment tree with toggleable collapse/expand
  */
 
+import { RedditClient } from '../../api/reddit-client';
 import { CachedPost, FeedConfig, RedditComment } from '../../core/types';
 import { PostCache } from '../../shared/storage/cache';
-import { RedditClient } from '../../api/reddit-client';
 
 type PostStoreListener = () => void;
 
 export interface PostStoreState {
-  posts: CachedPost[];
-  currentPage: number;           // Current page index (0, 1, 2...)
-  postsPerPage: number;          // Fixed at 4
-  highlightedIndex: number;      // Within current page (0-4)
-  loading: boolean;
-  loadingMore: boolean;
-  hasMore: boolean;
-  error: string | null;
-  // Comment state
-  comments: RedditComment[];
-  commentsPage: number;
-  hasMoreComments: boolean;
-  commentsLoading: boolean;
-  expandedComments: Set<string>; // Track which comments are expanded
+	posts: CachedPost[];
+	currentPage: number; // Current page index (0, 1, 2...)
+	postsPerPage: number; // Fixed at 4
+	highlightedIndex: number; // Within current page (0-4)
+	loading: boolean;
+	loadingMore: boolean;
+	hasMore: boolean;
+	error: string | null;
+	// Comment state
+	comments: RedditComment[];
+	commentsPage: number;
+	hasMoreComments: boolean;
+	commentsLoading: boolean;
+	expandedComments: Set<string>; // Track which comments are expanded
 }
 
 export class PostStore {
-  private state: PostStoreState = {
-    posts: [],
-    currentPage: 0,
-    postsPerPage: 4,
-    highlightedIndex: 0,
-    loading: false,
-    loadingMore: false,
-    hasMore: true,
-    error: null,
-    comments: [],
-    commentsPage: 0,
-    hasMoreComments: false,
-    commentsLoading: false,
-    expandedComments: new Set(),
-  };
+	private state: PostStoreState = {
+		posts: [],
+		currentPage: 0,
+		postsPerPage: 4,
+		highlightedIndex: 0,
+		loading: false,
+		loadingMore: false,
+		hasMore: true,
+		error: null,
+		comments: [],
+		commentsPage: 0,
+		hasMoreComments: false,
+		commentsLoading: false,
+		expandedComments: new Set(),
+	};
 
-  private listeners: PostStoreListener[] = [];
-  private cache: PostCache;
-  private client: RedditClient;
-  private currentFeed: FeedConfig | null = null;
-  private afterCursor: string | null = null;
+	private listeners: PostStoreListener[] = [];
+	private cache: PostCache;
+	private client: RedditClient;
+	private currentFeed: FeedConfig | null = null;
+	private afterCursor: string | null = null;
 
-  constructor(cache: PostCache, client: RedditClient) {
-    this.cache = cache;
-    this.client = client;
-  }
+	constructor(cache: PostCache, client: RedditClient) {
+		this.cache = cache;
+		this.client = client;
+	}
 
-  // ========================================================================
-  // Subscriptions
-  // ========================================================================
+	// ========================================================================
+	// Subscriptions
+	// ========================================================================
 
-  subscribe(listener: PostStoreListener): () => void {
-    this.listeners.push(listener);
-    return () => {
-      const index = this.listeners.indexOf(listener);
-      if (index > -1) this.listeners.splice(index, 1);
-    };
-  }
+	subscribe(listener: PostStoreListener): () => void {
+		this.listeners.push(listener);
+		return () => {
+			const index = this.listeners.indexOf(listener);
+			if (index > -1) this.listeners.splice(index, 1);
+		};
+	}
 
-  private notify(): void {
-    this.listeners.forEach(l => l());
-  }
+	private notify(): void {
+		this.listeners.forEach((l) => l());
+	}
 
-  // ========================================================================
-  // Getters
-  // ========================================================================
+	// ========================================================================
+	// Getters
+	// ========================================================================
 
-  getState(): PostStoreState {
-    return { ...this.state };
-  }
+	getState(): PostStoreState {
+		return { ...this.state };
+	}
 
-  /**
-   * Get post at current highlight position
-   */
-  getHighlightedPost(): CachedPost | null {
-    const absoluteIndex = this.state.currentPage * this.state.postsPerPage + this.state.highlightedIndex;
-    return this.state.posts[absoluteIndex] ?? null;
-  }
+	/**
+	 * Get post at current highlight position
+	 */
+	getHighlightedPost(): CachedPost | null {
+		const absoluteIndex = this.state.currentPage * this.state.postsPerPage + this.state.highlightedIndex;
+		return this.state.posts[absoluteIndex] ?? null;
+	}
 
-  /**
-   * Get current page's posts
-   */
-  getCurrentPagePosts(): CachedPost[] {
-    const start = this.state.currentPage * this.state.postsPerPage;
-    return this.state.posts.slice(start, start + this.state.postsPerPage);
-  }
+	/**
+	 * Get current page's posts
+	 */
+	getCurrentPagePosts(): CachedPost[] {
+		const start = this.state.currentPage * this.state.postsPerPage;
+		return this.state.posts.slice(start, start + this.state.postsPerPage);
+	}
 
-  /**
-   * Get total pages available
-   */
-  getTotalPages(): number {
-    return Math.ceil(this.state.posts.length / this.state.postsPerPage);
-  }
+	/**
+	 * Get total pages available
+	 */
+	getTotalPages(): number {
+		return Math.ceil(this.state.posts.length / this.state.postsPerPage);
+	}
 
-  // ========================================================================
-  // Feed Loading
-  // ========================================================================
+	// ========================================================================
+	// Feed Loading
+	// ========================================================================
 
-  async loadFeed(config: FeedConfig, forceRefresh = false): Promise<void> {
-    this.state.loading = true;
-    this.state.error = null;
-    this.state.currentPage = 0;
-    this.state.highlightedIndex = 0;
-    this.state.hasMore = true;
-    this.state.posts = [];
-    this.afterCursor = null;
-    this.currentFeed = config;
-    this.notify();
+	async loadFeed(config: FeedConfig, forceRefresh = false): Promise<void> {
+		this.state.loading = true;
+		this.state.error = null;
+		this.state.currentPage = 0;
+		this.state.highlightedIndex = 0;
+		this.state.hasMore = true;
+		this.state.posts = [];
+		this.afterCursor = null;
+		this.currentFeed = config;
+		this.notify();
 
-    try {
-      // Try cache first
-      if (!forceRefresh) {
-        const cached = this.cache.get(config);
-        if (cached && cached.length > 0) {
-          this.state.posts = cached;
-          this.state.loading = false;
-          this.notify();
-          return;
-        }
-      }
+		try {
+			// Try cache first
+			if (!forceRefresh) {
+				const cached = this.cache.get(config);
+				if (cached && cached.length > 0) {
+					this.state.posts = cached;
+					this.state.loading = false;
+					this.notify();
+					return;
+				}
+			}
 
-      const { posts: fresh, after } = await this.client.fetchFeed(config);
-      this.afterCursor = after;
-      this.state.hasMore = after !== null;
+			const { posts: fresh, after } = await this.client.fetchFeed(config);
+			this.afterCursor = after;
+			this.state.hasMore = after !== null;
 
-      const cachedPosts = await Promise.all(
-        fresh.map(async p => ({
-          ...p,
-          cachedAt: Date.now(),
-          seen: await this.cache.isSeen(p.id),
-        })),
-      );
+			const cachedPosts = await Promise.all(
+				fresh.map(async (p) => ({
+					...p,
+					cachedAt: Date.now(),
+					seen: await this.cache.isSeen(p.id),
+				})),
+			);
 
-      this.state.posts = cachedPosts;
-      await this.cache.set(config, cachedPosts);
-    } catch (err) {
-      this.state.error = err instanceof Error ? err.message : 'Failed to load feed';
-      console.error('[PostStore] loadFeed error:', err);
-    } finally {
-      this.state.loading = false;
-      this.notify();
-    }
-  }
+			this.state.posts = cachedPosts;
+			await this.cache.set(config, cachedPosts);
+		} catch (err) {
+			this.state.error = err instanceof Error ? err.message : 'Failed to load feed';
+			console.error('[PostStore] loadFeed error:', err);
+		} finally {
+			this.state.loading = false;
+			this.notify();
+		}
+	}
 
-  async refresh(): Promise<void> {
-    if (this.currentFeed) {
-      await this.loadFeed(this.currentFeed, true);
-    }
-  }
+	async refresh(): Promise<void> {
+		if (this.currentFeed) {
+			await this.loadFeed(this.currentFeed, true);
+		}
+	}
 
-  // ========================================================================
-  // Page Navigation
-  // ========================================================================
+	// ========================================================================
+	// Page Navigation
+	// ========================================================================
 
-  /**
-   * Go to next page, prefetch if needed
-   */
-  async nextPage(): Promise<void> {
-    const nextPage = this.state.currentPage + 1;
-    const postsNeeded = (nextPage + 1) * this.state.postsPerPage;
+	/**
+	 * Go to next page, prefetch if needed
+	 */
+	async nextPage(): Promise<void> {
+		const nextPage = this.state.currentPage + 1;
+		const postsNeeded = (nextPage + 1) * this.state.postsPerPage;
 
-    // Check if we need more posts
-    if (postsNeeded > this.state.posts.length && this.state.hasMore && !this.state.loadingMore) {
-      await this.loadMore();
-    }
+		// Check if we need more posts
+		if (postsNeeded > this.state.posts.length && this.state.hasMore && !this.state.loadingMore) {
+			await this.loadMore();
+		}
 
-    // Only advance if we have posts for that page
-    if (nextPage * this.state.postsPerPage < this.state.posts.length) {
-      this.state.currentPage = nextPage;
-      this.state.highlightedIndex = 0;
-      this.notify();
-    }
-  }
+		// Only advance if we have posts for that page
+		if (nextPage * this.state.postsPerPage < this.state.posts.length) {
+			this.state.loadingMore = true;
+			this.notify();
 
-  /**
-   * Go to previous page
-   */
-  prevPage(): void {
-    if (this.state.currentPage > 0) {
-      this.state.currentPage--;
-      this.state.highlightedIndex = 0;
-      this.notify();
-    }
-  }
+			await new Promise((resolve) => setTimeout(resolve, 1000));
 
-  /**
-   * Set highlight index within current page
-   */
-  setHighlight(index: number): void {
-    const pagePosts = this.getCurrentPagePosts();
-    // Allow the "load more" footer slot (index = postsPerPage) only when hasMore
-    const maxIndex = this.state.hasMore
-      ? this.state.postsPerPage
-      : Math.max(0, pagePosts.length - 1);
-    const clamped = Math.max(0, Math.min(index, maxIndex));
-    if (clamped !== this.state.highlightedIndex) {
-      this.state.highlightedIndex = clamped;
-      this.notify();
-    }
-  }
+			this.state.currentPage = nextPage;
+			this.state.loadingMore = false;
+			this.state.highlightedIndex = 0;
+			this.notify();
+		}
+	}
 
-  /**
-   * Append more posts (infinite scroll)
-   */
-  private async loadMore(): Promise<void> {
-    if (!this.currentFeed || !this.afterCursor || this.state.loadingMore) {
-      return;
-    }
+	/**
+	 * Go to previous page
+	 */
+	prevPage(): void {
+		if (this.state.currentPage > 0) {
+			this.state.currentPage--;
+			this.state.highlightedIndex = 3;
+			this.notify();
+		}
+	}
 
-    this.state.loadingMore = true;
-    this.notify();
+	/**
+	 * Set highlight index within current page
+	 */
+	setHighlight(index: number): void {
+		const pagePosts = this.getCurrentPagePosts();
+		// Always clamp to actual posts (0-3), never the footer slot
+		const lastPostIndex = Math.max(0, pagePosts.length - 1);
+		const clamped = Math.max(0, Math.min(index, lastPostIndex));
+		if (clamped !== this.state.highlightedIndex) {
+			this.state.highlightedIndex = clamped;
+			this.notify();
+		}
+	}
 
-    try {
-      const { posts: fresh, after } = await this.client.fetchFeed(this.currentFeed, this.afterCursor);
-      this.afterCursor = after;
-      this.state.hasMore = after !== null;
+	/**
+	 * Append more posts (infinite scroll)
+	 */
+	private async loadMore(): Promise<void> {
+		if (!this.currentFeed || !this.afterCursor || this.state.loadingMore) {
+			return;
+		}
 
-      const existingIds = new Set(this.state.posts.map(p => p.id));
-      const newPosts = await Promise.all(
-        fresh
-          .filter(p => !existingIds.has(p.id))
-          .map(async p => ({
-            ...p,
-            cachedAt: Date.now(),
-            seen: await this.cache.isSeen(p.id),
-          })),
-      );
+		this.state.loadingMore = true;
+		this.notify();
 
-      this.state.posts = [...this.state.posts, ...newPosts];
-      console.log(`[PostStore] loadMore: added ${newPosts.length} posts, total=${this.state.posts.length}`);
-    } catch (err) {
-      console.error('[PostStore] loadMore error:', err);
-    } finally {
-      this.state.loadingMore = false;
-      this.notify();
-    }
-  }
+		try {
+			const { posts: fresh, after } = await this.client.fetchFeed(this.currentFeed, this.afterCursor);
+			this.afterCursor = after;
+			this.state.hasMore = after !== null;
 
-  // ========================================================================
-  // Comments
-  // ========================================================================
+			const existingIds = new Set(this.state.posts.map((p) => p.id));
+			const newPosts = await Promise.all(
+				fresh
+					.filter((p) => !existingIds.has(p.id))
+					.map(async (p) => ({
+						...p,
+						cachedAt: Date.now(),
+						seen: await this.cache.isSeen(p.id),
+					})),
+			);
 
-  async loadComments(): Promise<void> {
-    const post = this.getHighlightedPost();
-    if (!post) return;
+			this.state.posts = [...this.state.posts, ...newPosts];
+			console.log(`[PostStore] loadMore: added ${newPosts.length} posts, total=${this.state.posts.length}`);
+		} catch (err) {
+			console.error('[PostStore] loadMore error:', err);
+		} finally {
+			this.state.loadingMore = false;
+			this.notify();
+		}
+	}
 
-    this.state.commentsLoading = true;
-    this.state.comments = [];
-    this.state.commentsPage = 0;
-    this.state.hasMoreComments = false;
-    this.state.expandedComments.clear();
-    this.notify();
+	// ========================================================================
+	// Comments
+	// ========================================================================
 
-    try {
-      const comments = await this.client.fetchComments(post.id, 10);
-      // Process comments - add depth, default collapsed for replies
-      this.state.comments = this.processComments(comments);
-      this.state.hasMoreComments = comments.length === 10;
-    } catch (err) {
-      console.error('[PostStore] loadComments error:', err);
-      this.state.comments = [];
-    } finally {
-      this.state.commentsLoading = false;
-      this.notify();
-    }
-  }
+	async loadComments(): Promise<void> {
+		const post = this.getHighlightedPost();
+		if (!post) return;
 
-  async loadMoreComments(): Promise<void> {
-    const post = this.getHighlightedPost();
-    if (!post || !this.state.hasMoreComments || this.state.commentsLoading) return;
+		this.state.commentsLoading = true;
+		this.state.comments = [];
+		this.state.commentsPage = 0;
+		this.state.hasMoreComments = false;
+		this.state.expandedComments.clear();
+		this.notify();
 
-    this.state.commentsLoading = true;
-    this.notify();
+		try {
+			const comments = await this.client.fetchComments(post.id, 10);
+			// Process comments - add depth, default collapsed for replies
+			this.state.comments = this.processComments(comments);
+			this.state.hasMoreComments = comments.length === 10;
+		} catch (err) {
+			console.error('[PostStore] loadComments error:', err);
+			this.state.comments = [];
+		} finally {
+			this.state.commentsLoading = false;
+			this.notify();
+		}
+	}
 
-    try {
-      const moreComments = await this.client.fetchComments(post.id, 10);
-      const processed = this.processComments(moreComments);
-      this.state.comments.push(...processed);
-      this.state.commentsPage++;
-      this.state.hasMoreComments = moreComments.length === 10;
-    } catch (err) {
-      console.error('[PostStore] loadMoreComments error:', err);
-    } finally {
-      this.state.commentsLoading = false;
-      this.notify();
-    }
-  }
+	async loadMoreComments(): Promise<void> {
+		const post = this.getHighlightedPost();
+		if (!post || !this.state.hasMoreComments || this.state.commentsLoading) return;
 
-  /**
-   * Process raw comments - add depth and default collapsed state
-   */
-  private processComments(comments: RedditComment[], depth = 0): RedditComment[] {
-    return comments.map(c => ({
-      ...c,
-      depth,
-      collapsed: depth > 0, // Collapse replies by default
-      replies: c.replies ? this.processComments(c.replies, depth + 1) : [],
-    }));
-  }
+		this.state.commentsLoading = true;
+		this.notify();
 
-  /**
-   * Toggle comment expanded/collapsed state
-   */
-  toggleComment(commentId: string): void {
-    if (this.state.expandedComments.has(commentId)) {
-      this.state.expandedComments.delete(commentId);
-    } else {
-      this.state.expandedComments.add(commentId);
-    }
-    this.notify();
-  }
+		try {
+			const moreComments = await this.client.fetchComments(post.id, 10);
+			const processed = this.processComments(moreComments);
+			this.state.comments.push(...processed);
+			this.state.commentsPage++;
+			this.state.hasMoreComments = moreComments.length === 10;
+		} catch (err) {
+			console.error('[PostStore] loadMoreComments error:', err);
+		} finally {
+			this.state.commentsLoading = false;
+			this.notify();
+		}
+	}
 
-  isCommentExpanded(commentId: string): boolean {
-    return this.state.expandedComments.has(commentId);
-  }
+	/**
+	 * Process raw comments - add depth and default collapsed state
+	 */
+	private processComments(comments: RedditComment[], depth = 0): RedditComment[] {
+		return comments.map((c) => ({
+			...c,
+			depth,
+			collapsed: depth > 0, // Collapse replies by default
+			replies: c.replies ? this.processComments(c.replies, depth + 1) : [],
+		}));
+	}
 
-  // ========================================================================
-  // Utilities
-  // ========================================================================
+	/**
+	 * Toggle comment expanded/collapsed state
+	 */
+	toggleComment(commentId: string): void {
+		if (this.state.expandedComments.has(commentId)) {
+			this.state.expandedComments.delete(commentId);
+		} else {
+			this.state.expandedComments.add(commentId);
+		}
+		this.notify();
+	}
 
-  private markCurrentSeen(): void {
-    const post = this.getHighlightedPost();
-    if (post && !post.seen) {
-      post.seen = true;
-      this.cache.markSeen(post.id).catch(console.error);
-    }
-  }
+	isCommentExpanded(commentId: string): boolean {
+		return this.state.expandedComments.has(commentId);
+	}
 }

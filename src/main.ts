@@ -16,18 +16,18 @@ import {
 	TextContainerProperty,
 	waitForEvenAppBridge,
 } from '@evenrealities/even_hub_sdk';
-import { DEFAULT_CONFIG } from './core/config';
-import { PostCache } from './shared/storage/cache';
-import { StorageService } from './shared/storage/storage';
 import { AuthManager } from './api/auth-manager';
-import { RedditClient } from './api/reddit-client';
 import { RateLimiter } from './api/rate-limiter';
-import { PostStore } from './features/feed/post-store';
-import { UIManager } from './core/ui-manager';
+import { RedditClient } from './api/reddit-client';
+import { DEFAULT_CONFIG } from './core/config';
 import type { AppConfig } from './core/types';
+import { UIManager } from './core/ui-manager';
 import { CommentView } from './features/comments/comment-view';
 import { DetailView } from './features/detail/detail-view';
 import { FeedView } from './features/feed/feed-view';
+import { PostStore } from './features/feed/post-store';
+import { PostCache } from './shared/storage/cache';
+import { StorageService } from './shared/storage/storage';
 
 /** Must match FeedView.POSTS_PER_PAGE */
 const CONFIG_KEY = 'reddit-client-config';
@@ -182,6 +182,12 @@ async function main() {
 	// ─── Event handler ────────────────────────────────────────────────────────
 
 	bridge.onEvenHubEvent((event) => {
+		const state = postStore.getState();
+		if (state.loading || state.loadingMore || state.commentsLoading) {
+			console.log('[Event] Ignoring event while loading');
+			return;
+		}
+
 		const entry = uiManager.getCurrentEntry();
 		const view = entry.view;
 
@@ -249,15 +255,14 @@ async function main() {
 function handleFeedEvent(type: OsEventTypeList | undefined, postStore: PostStore, uiManager: UIManager): void {
 	const state = postStore.getState();
 	const pagePosts = postStore.getCurrentPagePosts();
-	// Max reachable index: postsPerPage (footer) when hasMore, else last post slot
-	const maxIndex = state.hasMore ? state.postsPerPage : Math.max(0, pagePosts.length - 1);
+	const lastIndex = Math.max(0, pagePosts.length - 1);
 
 	if (type === OsEventTypeList.SCROLL_BOTTOM_EVENT) {
 		const next = state.highlightedIndex + 1;
-		if (next <= maxIndex) {
+		if (next <= lastIndex) {
 			postStore.setHighlight(next);
-		} else {
-			// Past the footer → advance to next page (loads more if needed)
+		} else if (state.hasMore) {
+			// At last post and scroll down -> next page
 			postStore.nextPage().catch(console.error);
 		}
 	} else if (type === OsEventTypeList.SCROLL_TOP_EVENT) {
@@ -265,25 +270,21 @@ function handleFeedEvent(type: OsEventTypeList | undefined, postStore: PostStore
 		if (prev >= 0) {
 			postStore.setHighlight(prev);
 		} else if (state.currentPage > 0) {
+			// At first post and scroll up -> prev page
 			postStore.prevPage();
 		}
 	} else if (type === OsEventTypeList.CLICK_EVENT || type === undefined) {
-		if (state.highlightedIndex >= pagePosts.length) {
-			// Footer (load more) tapped
-			console.log('[Feed] Load more tapped');
-			postStore.nextPage().catch(console.error);
-		} else {
-			const post = postStore.getHighlightedPost();
-			if (post) {
-				console.log(`[Feed] Opening post: ${post.id}`);
-				const currentEntry = uiManager.getCurrentEntry();
-				uiManager.pushView({
-					view: 'detail',
-					postId: post.id,
-					pageIndex: currentEntry.pageIndex,
-					highlightIndex: currentEntry.highlightIndex,
-				});
-			}
+		// Highlight now only ever lands on posts
+		const post = postStore.getHighlightedPost();
+		if (post) {
+			console.log(`[Feed] Opening post: ${post.id}`);
+			const currentEntry = uiManager.getCurrentEntry();
+			uiManager.pushView({
+				view: 'detail',
+				postId: post.id,
+				pageIndex: currentEntry.pageIndex,
+				highlightIndex: currentEntry.highlightIndex,
+			});
 		}
 	} else if (type === OsEventTypeList.DOUBLE_CLICK_EVENT) {
 		console.log('[Event] Refreshing feed...');

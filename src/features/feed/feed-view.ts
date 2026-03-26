@@ -33,10 +33,12 @@ import { CachedPost } from '../../core/types';
 export const POSTS_PER_PAGE = 4;
 
 const POST_H = 64; // height of each post row (px);  4 × 64 = 256 px
+const WIDTH = 576;
 const FOOTER_Y = POSTS_PER_PAGE * POST_H; //           256 px
 const FOOTER_H = 288 - FOOTER_Y; //                    32 px
-const POST_PAD = 4; // padding inside each post row
+const POST_PAD = 3; // padding inside each post row
 const FOOTER_PAD = 2; // tighter padding for the narrow footer
+const MAX_POST_TITLE_LEN = 60;
 
 export class FeedView {
 	private bridge: EvenAppBridge;
@@ -76,7 +78,7 @@ export class FeedView {
 				new TextContainerProperty({
 					xPosition: 0,
 					yPosition: i * POST_H,
-					width: 576,
+					width: WIDTH,
 					height: POST_H,
 					borderWidth: selected ? 1 : 0,
 					borderColor: selected ? 15 : 0,
@@ -84,28 +86,28 @@ export class FeedView {
 					paddingLength: POST_PAD,
 					containerID: i + 1,
 					containerName: `post${i}`,
-					isEventCapture: i === 0 ? 1 : 0,
+					isEventCapture: i === 0 && !loadingMore ? 1 : 0,
 					content: post ? formatPost(post) : '',
 				}),
 			);
 		}
 
-		// ── Footer / load-more row (index 4) ─────────────────────────────────────
-		const footerSelected = highlightedIndex === POSTS_PER_PAGE;
-
+		// ── load-more el (index 4) ─────────────────────────────────────
+		const footerContent = buildFooter(loadingMore);
+		const footerWidth = footerContent.length * 11;
 		containers.push(
 			new TextContainerProperty({
-				xPosition: 0,
+				xPosition: Math.floor((WIDTH - footerWidth) / 2),
 				yPosition: FOOTER_Y,
-				width: 576,
 				height: FOOTER_H,
-				borderWidth: footerSelected ? 1 : 0,
-				borderColor: footerSelected ? 15 : 0,
+				width: footerWidth,
+				borderWidth: 0,
+				borderColor: 0,
 				paddingLength: FOOTER_PAD,
 				containerID: POSTS_PER_PAGE + 1,
 				containerName: 'footer',
 				isEventCapture: 0,
-				content: buildFooter(pageIndex, totalPages, hasMore, loadingMore),
+				content: footerContent,
 			}),
 		);
 
@@ -116,7 +118,7 @@ export class FeedView {
 
 		const ok = await this.bridge.rebuildPageContainer(
 			new RebuildPageContainer({
-				containerTotalNum: POSTS_PER_PAGE + 1, // 5
+				containerTotalNum: POSTS_PER_PAGE + 1,
 				textObject: containers,
 			}),
 		);
@@ -130,16 +132,24 @@ export class FeedView {
 function formatPost(post: CachedPost): string {
 	const score = fmtScore(post.score);
 	const cmt = fmtNum(post.numComments);
-	const line1 = `r/${post.subreddit}  ↑${score}  ${cmt}c`;
-	const title = post.title.length > 60 ? post.title.substring(0, 60) + '...' : post.title;
-	return `${line1}\n${title}`;
+	const line1 = `r/${post.subreddit}  [ ${score}↑  ${cmt}c ]`;
+	const needsTruncate = post.title.length >= MAX_POST_TITLE_LEN;
+	const title = needsTruncate ? post.title.substring(0, MAX_POST_TITLE_LEN) : post.title;
+
+	const normTruncate = (s: string) => {
+		const normStr = s.trim();
+		if (!needsTruncate) return s;
+		const last = normStr.at(-1);
+		if (!last || /[a-zA-Z0-9]/.test(last)) return s + '…';
+		return normStr.substring(0, normStr.length - 1) + '…';
+	};
+
+	return `  ${line1}\n  ${normTruncate(title)}`;
 }
 
-function buildFooter(page: number, total: number, hasMore: boolean, loadingMore: boolean): string {
-	const pg = `[${page + 1}/${total}]`;
-	if (loadingMore) return `${pg} Loading...`;
-	if (hasMore) return `${pg} ▼ more  tap:open  dbl:refresh`;
-	return `${pg} tap:open  dbl:refresh`;
+function buildFooter(loadingMore: boolean): string {
+	if (loadingMore) return `╭──  Loading feed...  ──╮`;
+	return `╭──  Scroll down to update ──╮`;
 }
 
 function fmtScore(n: number): string {
