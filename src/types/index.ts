@@ -1,7 +1,5 @@
 /**
  * Reddit Client - Type Definitions
- * 
- * Based on reddit-pi service research and Reddit API documentation
  */
 
 // ============================================================================
@@ -34,7 +32,11 @@ export interface RedditComment {
   body: string;
   score: number;
   createdUtc: number;
+  depth?: number;              // Indentation level (0 = top)
+  parentId?: string;
   replies?: RedditComment[];
+  collapsed?: boolean;         // UI state
+  hasMoreReplies?: boolean;
 }
 
 export interface RedditListing<T> {
@@ -48,17 +50,6 @@ export interface RedditListing<T> {
   };
 }
 
-export interface RedditMoreComments {
-  kind: 'more';
-  data: {
-    count: number;
-    name: string;
-    id: string;
-    parent_id: string;
-    children: string[];
-  };
-}
-
 // ============================================================================
 // App State Types
 // ============================================================================
@@ -66,7 +57,6 @@ export interface RedditMoreComments {
 export interface CachedPost extends RedditPost {
   cachedAt: number;
   seen: boolean;
-  interaction?: 'upvote' | 'downvote' | 'hide' | 'save';
 }
 
 export interface FeedConfig {
@@ -77,14 +67,14 @@ export interface FeedConfig {
   limit: number;
 }
 
-export type FeedEndpoint = 
-  | 'best' 
-  | 'hot' 
-  | 'new' 
-  | 'rising' 
-  | 'top' 
+export type FeedEndpoint =
+  | 'best'
+  | 'hot'
+  | 'new'
+  | 'rising'
+  | 'top'
   | 'controversial'
-  | 'r/popular' 
+  | 'r/popular'
   | 'r/all';
 
 export type SortOption = 'hot' | 'new' | 'top' | 'rising' | 'controversial';
@@ -128,34 +118,13 @@ export interface UIConfig {
   showThumbnails: boolean;
   compactView: boolean;
   defaultSort: SortOption;
-  gestures: GestureConfig;
 }
-
-export interface GestureConfig {
-  swipeForward: Action;
-  swipeBackward: Action;
-  singleTap: Action;
-  doubleTap: Action;
-}
-
-export type Action = 
-  | 'next' 
-  | 'prev' 
-  | 'scrollUp' 
-  | 'scrollDown' 
-  | 'open' 
-  | 'back' 
-  | 'upvote' 
-  | 'downvote' 
-  | 'menu' 
-  | 'comments' 
-  | 'refresh';
 
 // ============================================================================
 // UI Types
 // ============================================================================
 
-export type ViewMode = 'feed' | 'detail' | 'comments' | 'menu';
+export type ViewMode = 'feed' | 'detail' | 'comments';
 
 export interface SyncResult {
   success: boolean;
@@ -176,15 +145,8 @@ export interface RateLimitState {
 
 export interface RedditClientInterface {
   initialize(): Promise<void>;
-  fetchFeed(config: FeedConfig): Promise<RedditPost[]>;
+  fetchFeed(config: FeedConfig, after?: string): Promise<{ posts: RedditPost[]; after: string | null }>;
   fetchComments(postId: string, limit?: number): Promise<RedditComment[]>;
-  upvote(fullname: string): Promise<void>;
-  downvote(fullname: string): Promise<void>;
-  unvote(fullname: string): Promise<void>;
-  hide(fullname: string): Promise<void>;
-  unhide(fullname: string): Promise<void>;
-  save(fullname: string): Promise<void>;
-  unsave(fullname: string): Promise<void>;
 }
 
 export interface CacheEntry {

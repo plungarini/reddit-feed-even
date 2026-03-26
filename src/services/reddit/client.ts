@@ -1,326 +1,193 @@
 /**
  * Reddit API Client
- * 
- * Full-featured Reddit client with:
- * - All major feed endpoints (best, hot, new, rising, top, controversial)
- * - Subreddit-specific feeds
- * - Comment fetching
- * - Post interactions (upvote, downvote, hide, save)
- * - Automatic rate limit handling
- * 
- * Based on reddit-pi service implementation.
+ *
+ * Proxies all requests through the local Express server (server/index.ts)
+ * which sets Cookie headers server-side — the browser Fetch API cannot.
  */
 
+import { FeedConfig, RedditClientInterface, RedditComment, RedditListing, RedditPost } from '../../types';
 import { AuthManager } from './auth';
 import { RateLimiter } from './rate-limiter';
-import { 
-  RedditPost, 
-  RedditComment, 
-  RedditListing, 
-  FeedConfig,
-  RedditClientInterface 
-} from '../../types';
 
 export class RedditClient implements RedditClientInterface {
-  private auth: AuthManager;
-  private rateLimiter: RateLimiter;
-  private baseUrl = 'https://www.reddit.com';
+	private auth: AuthManager;
+	private rateLimiter: RateLimiter;
 
-  constructor(auth: AuthManager, rateLimiter: RateLimiter) {
-    this.auth = auth;
-    this.rateLimiter = rateLimiter;
-  }
+	/** Proxy base URL — auto-detects LAN IP so the WebView on the phone connects correctly. */
+	private get baseUrl(): string {
+		const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+		return `http://${host}:3001/api/reddit`;
+	}
 
-  /**
-   * Initialize the client (authenticates and gets modhash)
-   */
-  async initialize(): Promise<void> {
-    await this.auth.initialize();
-  }
+	constructor(auth: AuthManager, rateLimiter: RateLimiter) {
+		this.auth = auth;
+		this.rateLimiter = rateLimiter;
+	}
 
-  // ========================================================================
-  // HTTP Methods
-  // ========================================================================
+	async initialize(): Promise<void> {
+		await this.auth.initialize();
+	}
 
-  /**
-   * Make a GET request with rate limiting
-   */
-  private async get<T>(path: string, params: Record<string, string> = {}): Promise<T> {
-    await this.rateLimiter.throttle();
+	// ========================================================================
+	// HTTP helpers
+	// ========================================================================
 
-    const url = new URL(`${this.baseUrl}${path}`);
-    url.searchParams.set('raw_json', '1');
+	private proxyHeaders(): Record<string, string> {
+		// Use auth.buildHeaders() which properly constructs Cookie header
+		const headers = this.auth.buildHeaders({ Accept: 'application/json' });
 
-    for (const [key, value] of Object.entries(params)) {
-      if (value !== undefined && value !== null) {
-        url.searchParams.set(key, value);
-      }
-    }
+		// Also send X-Reddit-Token and X-Reddit-Session for the proxy to convert to Cookie
+		const config = this.auth.getConfig();
+		if (config.tokenV2) {
+			headers['X-Reddit-Token'] = config.tokenV2;
+			console.log('[RedditClient] Using token_v2 for auth');
+		} else {
+			console.log('[RedditClient] No token_v2, using public feed');
+		}
+		if (config.session) {
+			headers['X-Reddit-Session'] = config.session;
+			console.log('[RedditClient] Using reddit_session for auth');
+		}
+		if (config.userAgent) headers['X-Reddit-User-Agent'] = config.userAgent;
 
-    const response = await fetch(url.toString(), {
-      headers: this.auth.buildHeaders(),
-    });
+		return headers;
+	}
 
-    // Track rate limits
-    this.rateLimiter.updateFromHeaders(response.headers);
+	private async get<T>(path: string, params: Record<string, string> = {}): Promise<T> {
+		await this.rateLimiter.throttle();
 
-    if (!response.ok) {
-      if (response.status === 401 || response.status === 403) {
-        throw new Error(`Authentication failed (${response.status}). Please check your Reddit credentials.`);
-      }
-      throw new Error(`Reddit API error: ${response.status} ${response.statusText}`);
-    }
+		const url = new URL(`${this.baseUrl}${path}`);
+		for (const [key, value] of Object.entries(params)) {
+			if (value !== undefined && value !== null) url.searchParams.set(key, value);
+		}
 
-    return response.json() as T;
-  }
+		const response = await fetch(url.toString(), { headers: this.proxyHeaders() });
+		this.rateLimiter.updateFromHeaders(response.headers);
 
-  /**
-   * Make a POST request (for actions like voting)
-   */
-  private async post(path: string, body: Record<string, string>): Promise<unknown> {
-    await this.rateLimiter.throttle();
+		if (!response.ok) {
+			if (response.status === 401 || response.status === 403) {
+				throw new Error(`Authentication failed (${response.status}). Check your Reddit credentials.`);
+			}
+			throw new Error(`Reddit API error: ${response.status} ${response.statusText}`);
+		}
 
-    const url = `${this.baseUrl}${path}`;
-    const formData = new URLSearchParams(body);
+		return response.json() as T;
+	}
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: this.auth.buildHeaders({
-        'Content-Type': 'application/x-www-form-urlencoded',
-      }),
-      body: formData.toString(),
-    });
+	// ========================================================================
+	// Feed
+	// ========================================================================
 
-    this.rateLimiter.updateFromHeaders(response.headers);
+	/**
+	 * Fetch a page of posts. Pass `after` for pagination (infinite scroll).
+	 * Returns the posts and the cursor for the next page.
+	 */
+	async fetchFeed(config: FeedConfig, after?: string): Promise<{ posts: RedditPost[]; after: string | null }> {
+		let path: string;
 
-    if (!response.ok) {
-      if (response.status === 401 || response.status === 403) {
-        throw new Error(`Action failed (${response.status}). Please check authentication.`);
-      }
-      throw new Error(`Reddit API error: ${response.status}`);
-    }
+		if (config.subreddit) {
+			path = `/r/${config.subreddit}/${config.sort ?? 'hot'}.json`;
+		} else {
+			path = `/${config.endpoint}.json`;
+		}
 
-    return response.json();
-  }
+		const params: Record<string, string> = {
+			limit: String(Math.min(config.limit, 100)),
+		};
+		if (after) params.after = after;
+		if (
+			config.time &&
+			(config.sort === 'top' ||
+				config.sort === 'controversial' ||
+				config.endpoint === 'top' ||
+				config.endpoint === 'controversial')
+		) {
+			params.t = config.time;
+		}
 
-  // ========================================================================
-  // Feed Endpoints
-  // ========================================================================
+		const listing = await this.get<RedditListing<any>>(path, params);
+		const posts = listing.data.children
+			.filter((child) => child.kind === 't3')
+			.map((child) => this.normalizePost(child.data));
 
-  /**
-   * Fetch posts from a feed endpoint
-   */
-  async fetchFeed(config: FeedConfig): Promise<RedditPost[]> {
-    let path: string;
+		return { posts, after: listing.data.after };
+	}
 
-    // Build path based on config
-    if (config.subreddit) {
-      const sort = config.sort || 'hot';
-      path = `/r/${config.subreddit}/${sort}.json`;
-    } else if (config.endpoint === 'best') {
-      path = '/best.json';
-    } else if (config.endpoint.startsWith('r/')) {
-      path = `/${config.endpoint}.json`;
-    } else {
-      path = `/${config.endpoint}.json`;
-    }
+	// ========================================================================
+	// Comments
+	// ========================================================================
 
-    const params: Record<string, string> = {
-      limit: String(Math.min(config.limit, 100)),
-    };
+	async fetchComments(postId: string, limit: number = 12): Promise<RedditComment[]> {
+		const response = await this.get<[unknown, RedditListing<any>]>(`/comments/${postId}.json`, {
+			limit: String(limit),
+			depth: '2',
+			sort: 'top',
+		});
+		return this.flattenComments(response[1].data.children, 2);
+	}
 
-    // Add time filter for top/controversial
-    if (config.time && (config.sort === 'top' || config.sort === 'controversial' || 
-        config.endpoint === 'top' || config.endpoint === 'controversial')) {
-      params.t = config.time;
-    }
+	private flattenComments(children: any[], maxDepth: number = 2, depth: number = 0): RedditComment[] {
+		const result: RedditComment[] = [];
 
-    const listing = await this.get<RedditListing<any>>(path, params);
+		for (const child of children) {
+			if (child.kind !== 't1') continue;
+			if (child.data.author === '[deleted]' || child.data.body === '[deleted]') continue;
 
-    return listing.data.children
-      .filter(child => child.kind === 't3')
-      .map(child => this.normalizePost(child.data));
-  }
+			result.push({
+				id: child.data.id,
+				author: child.data.author,
+				body: child.data.body,
+				score: child.data.score,
+				createdUtc: child.data.created_utc,
+			});
 
-  /**
-   * Fetch multiple pages of a feed
-   */
-  async fetchFeedPaginated(config: FeedConfig, maxPosts: number = 100): Promise<RedditPost[]> {
-    const posts: RedditPost[] = [];
-    let after: string | null = null;
+			if (depth < maxDepth && typeof child.data.replies === 'object') {
+				const replies = child.data.replies?.data?.children ?? [];
+				result.push(...this.flattenComments(replies, maxDepth, depth + 1));
+			}
+		}
 
-    while (posts.length < maxPosts) {
-      const params: Record<string, string> = {
-        limit: String(Math.min(100, maxPosts - posts.length)),
-      };
+		return result.sort((a, b) => b.score - a.score);
+	}
 
-      if (after) {
-        params.after = after;
-      }
+	// ========================================================================
+	// Normalisation
+	// ========================================================================
 
-      const path = `/${config.endpoint}.json`;
-      const listing = await this.get<RedditListing<any>>(path, params);
+	private normalizePost(raw: any): RedditPost {
+		let contentType: RedditPost['contentType'] = 'link';
 
-      const newPosts = listing.data.children
-        .filter(child => child.kind === 't3')
-        .map(child => this.normalizePost(child.data));
+		if (raw.is_self) {
+			contentType = 'self';
+		} else if (raw.url?.match(/\.(jpg|jpeg|png|gif|webp)(\?.*)?$/i)) {
+			contentType = 'image';
+		} else if (raw.url?.includes('v.redd.it')) {
+			contentType = 'video';
+		} else if (raw.url?.includes('reddit.com/gallery')) {
+			contentType = 'gallery';
+		}
 
-      posts.push(...newPosts);
-      after = listing.data.after;
+		// Reddit encodes preview URLs with &amp; — decode for direct use
+		const preview = raw.preview?.images?.[0]?.source?.url?.replace(/&amp;/g, '&');
 
-      if (!after || newPosts.length === 0) {
-        break;
-      }
-
-      // Polite delay between pages
-      await new Promise(r => setTimeout(r, 1000));
-    }
-
-    return posts.slice(0, maxPosts);
-  }
-
-  // ========================================================================
-  // Comments
-  // ========================================================================
-
-  /**
-   * Fetch top comments for a post
-   */
-  async fetchComments(postId: string, limit: number = 10): Promise<RedditComment[]> {
-    const response = await this.get<[unknown, RedditListing<any>]>(
-      `/comments/${postId}.json`,
-      {
-        limit: String(limit),
-        depth: '2',
-        sort: 'top',
-      }
-    );
-
-    const commentListing = response[1];
-    return this.flattenComments(commentListing.data.children, 2);
-  }
-
-  /**
-   * Flatten nested comment tree
-   */
-  private flattenComments(children: any[], maxDepth: number = 2, depth: number = 0): RedditComment[] {
-    const result: RedditComment[] = [];
-
-    for (const child of children) {
-      if (child.kind !== 't1') continue;
-      if (child.data.author === '[deleted]' || child.data.body === '[deleted]') continue;
-
-      result.push({
-        id: child.data.id,
-        author: child.data.author,
-        body: child.data.body,
-        score: child.data.score,
-        createdUtc: child.data.created_utc,
-      });
-
-      // Recursively add replies
-      if (depth < maxDepth && typeof child.data.replies === 'object') {
-        const replies = child.data.replies?.data?.children || [];
-        result.push(...this.flattenComments(replies, maxDepth, depth + 1));
-      }
-    }
-
-    // Sort by score descending
-    return result.sort((a, b) => b.score - a.score);
-  }
-
-  // ========================================================================
-  // Post Interactions
-  // ========================================================================
-
-  /**
-   * Upvote a post or comment
-   * @param fullname - t3_xxxxx for posts, t1_xxxxx for comments
-   */
-  async upvote(fullname: string): Promise<void> {
-    await this.post('/api/vote', { id: fullname, dir: '1' });
-  }
-
-  /**
-   * Downvote a post or comment
-   */
-  async downvote(fullname: string): Promise<void> {
-    await this.post('/api/vote', { id: fullname, dir: '-1' });
-  }
-
-  /**
-   * Remove vote from a post or comment
-   */
-  async unvote(fullname: string): Promise<void> {
-    await this.post('/api/vote', { id: fullname, dir: '0' });
-  }
-
-  /**
-   * Hide a post from feeds
-   */
-  async hide(fullname: string): Promise<void> {
-    await this.post('/api/hide', { id: fullname });
-  }
-
-  /**
-   * Unhide a previously hidden post
-   */
-  async unhide(fullname: string): Promise<void> {
-    await this.post('/api/unhide', { id: fullname });
-  }
-
-  /**
-   * Save a post for later
-   */
-  async save(fullname: string): Promise<void> {
-    await this.post('/api/save', { id: fullname });
-  }
-
-  /**
-   * Unsave a post
-   */
-  async unsave(fullname: string): Promise<void> {
-    await this.post('/api/unsave', { id: fullname });
-  }
-
-  // ========================================================================
-  // Helpers
-  // ========================================================================
-
-  /**
-   * Normalize raw Reddit API post data
-   */
-  private normalizePost(raw: any): RedditPost {
-    let contentType: RedditPost['contentType'] = 'link';
-
-    if (raw.is_self) {
-      contentType = 'self';
-    } else if (raw.url?.match(/\.(jpg|jpeg|png|gif|webp)(\?.*)?$/i)) {
-      contentType = 'image';
-    } else if (raw.url?.includes('v.redd.it')) {
-      contentType = 'video';
-    } else if (raw.url?.includes('reddit.com/gallery')) {
-      contentType = 'gallery';
-    }
-
-    return {
-      id: raw.id,
-      fullname: raw.name,
-      subreddit: raw.subreddit,
-      title: raw.title,
-      url: raw.url,
-      permalink: raw.permalink,
-      selftext: raw.selftext || undefined,
-      author: raw.author,
-      score: raw.score,
-      upvoteRatio: raw.upvote_ratio,
-      numComments: raw.num_comments,
-      createdUtc: raw.created_utc,
-      contentType,
-      thumbnail: raw.thumbnail,
-      preview: raw.preview?.images?.[0]?.source?.url,
-      flair: raw.link_flair_text,
-      isNsfw: raw.over_18,
-    };
-  }
+		return {
+			id: raw.id,
+			fullname: raw.name,
+			subreddit: raw.subreddit,
+			title: raw.title,
+			url: raw.url,
+			permalink: raw.permalink,
+			selftext: raw.selftext || undefined,
+			author: raw.author,
+			score: raw.score,
+			upvoteRatio: raw.upvote_ratio,
+			numComments: raw.num_comments,
+			createdUtc: raw.created_utc,
+			contentType,
+			thumbnail: raw.thumbnail,
+			preview,
+			flair: raw.link_flair_text,
+			isNsfw: raw.over_18,
+		};
+	}
 }
