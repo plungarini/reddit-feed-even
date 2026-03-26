@@ -1,148 +1,78 @@
 /**
  * Reddit Authentication Manager
- * 
+ *
  * Handles cookie-based authentication with Reddit.
- * Based on reddit-pi implementation.
- * 
- * Auth flow:
- * 1. Provide token_v2 (and optionally reddit_session) cookies
- * 2. Fetch modhash from /api/me.json
- * 3. Include modhash in POST request headers
+ * The actual cookie setting happens in the proxy server (server/index.ts).
+ * This class just manages the token/config and builds headers for the proxy.
  */
 
 import { AuthConfig } from '../../types';
 
 export class AuthManager {
-  private config: AuthConfig;
-  private modhash: string = '';
-  private isInitialized: boolean = false;
+	private config: AuthConfig;
+	private isInitialized: boolean = false;
 
-  constructor(config: AuthConfig) {
-    this.config = config;
-  }
+	constructor(config: AuthConfig) {
+		this.config = config;
+	}
 
-  /**
-   * Build request headers with authentication
-   */
-  buildHeaders(extra: Record<string, string> = {}): Record<string, string> {
-    const headers: Record<string, string> = {
-      'User-Agent': this.config.userAgent,
-      'Accept': 'application/json',
-      ...extra,
-    };
+	/**
+	 * Build request headers for the proxy.
+	 * The proxy will convert X-Reddit-Token and X-Reddit-Session to Cookie header.
+	 */
+	buildHeaders(extra: Record<string, string> = {}): Record<string, string> {
+		const headers: Record<string, string> = {
+			'User-Agent': this.config.userAgent,
+			Accept: 'application/json',
+			...extra,
+		};
 
-    // Add cookie-based auth
-    if (this.config.type === 'cookie') {
-      const cookies: string[] = [];
+		// Send tokens to proxy via custom headers (proxy converts to Cookie)
+		if (this.config.tokenV2) {
+			headers['X-Reddit-Token'] = this.config.tokenV2;
+		}
+		if (this.config.session) {
+			headers['X-Reddit-Session'] = this.config.session;
+		}
 
-      if (this.config.tokenV2) {
-        cookies.push(`token_v2=${this.config.tokenV2}`);
-      }
+		return headers;
+	}
 
-      if (this.config.session) {
-        cookies.push(`reddit_session=${this.config.session}`);
-      }
+	/**
+	 * Initialize authentication.
+	 * For feed reading, we just need to have the tokens - no modhash needed.
+	 * Modhash is only required for POST actions (voting, saving) which we don't support yet.
+	 */
+	async initialize(): Promise<void> {
+		if (this.isInitialized) {
+			return;
+		}
 
-      if (cookies.length > 0) {
-        headers['Cookie'] = cookies.join('; ');
-      }
-    }
+		console.log('[AuthManager] Initializing, tokenV2 present:', !!this.config.tokenV2);
+		console.log('[AuthManager] Session present:', !!this.config.session);
 
-    // Add modhash for POST requests
-    if (this.modhash) {
-      headers['x-modhash'] = this.modhash;
-    }
+		this.isInitialized = true;
+	}
 
-    return headers;
-  }
+	/**
+	 * Check if authenticated (has token)
+	 */
+	isAuthenticated(): boolean {
+		return !!(this.config.tokenV2 && this.config.session);
+	}
 
-  /**
-   * Initialize authentication by fetching modhash
-   */
-  async initialize(): Promise<void> {
-    if (this.isInitialized) {
-      return;
-    }
+	/**
+	 * Update auth configuration
+	 */
+	updateConfig(config: Partial<AuthConfig>): void {
+		this.config = { ...this.config, ...config };
+		this.isInitialized = false;
+	}
 
-    if (this.config.type === 'cookie') {
-      if (!this.config.tokenV2) {
-        throw new Error('Missing REDDIT_TOKEN_V2. Please configure authentication.');
-      }
-
-      await this.fetchModhash();
-    }
-
-    this.isInitialized = true;
-  }
-
-  /**
-   * Fetch modhash from Reddit API
-   */
-  private async fetchModhash(): Promise<void> {
-    try {
-      const response = await fetch('https://www.reddit.com/api/me.json', {
-        headers: this.buildHeaders(),
-      });
-
-      if (!response.ok) {
-        if (response.status === 401 || response.status === 403) {
-          throw new Error(`Authentication failed (${response.status}). Please check your Reddit token.`);
-        }
-        throw new Error(`Failed to fetch modhash: ${response.status}`);
-      }
-
-      const data = await response.json();
-      this.modhash = data.data?.modhash || '';
-
-      if (!this.modhash) {
-        console.warn('[AuthManager] No modhash in response, some actions may fail');
-      } else {
-        console.log('[AuthManager] Modhash acquired successfully');
-      }
-    } catch (error) {
-      console.error('[AuthManager] Failed to initialize:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Refresh modhash (call if POST requests start failing)
-   */
-  async refresh(): Promise<void> {
-    this.isInitialized = false;
-    await this.initialize();
-  }
-
-  /**
-   * Get current modhash
-   */
-  getModhash(): string {
-    return this.modhash;
-  }
-
-  /**
-   * Check if authenticated and initialized
-   */
-  isAuthenticated(): boolean {
-    if (this.config.type === 'cookie') {
-      return !!this.config.tokenV2 && this.isInitialized;
-    }
-    return this.isInitialized;
-  }
-
-  /**
-   * Update auth configuration
-   */
-  updateConfig(config: Partial<AuthConfig>): void {
-    this.config = { ...this.config, ...config };
-    this.isInitialized = false;
-    this.modhash = '';
-  }
-
-  /**
-   * Get auth configuration
-   */
-  getConfig(): AuthConfig {
-    return { ...this.config };
-  }
+	/**
+	 * Get auth configuration
+	 */
+	getConfig(): AuthConfig {
+		return { ...this.config };
+	}
 }
