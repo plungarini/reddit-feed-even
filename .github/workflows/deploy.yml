@@ -59,7 +59,8 @@ jobs:
           keep_files: true
 
       - name: Output URL
-        run: echo "🚀 Production: https://${{ github.repository_owner }}.github.io/reddit-client-even/"
+        run: |
+          echo "🚀 Production: https://${{ github.repository_owner }}.github.io/reddit-client-even/"
 
   # Deploy staging from develop branch
   deploy-staging:
@@ -105,4 +106,5 @@ jobs:
           keep_files: true
 
       - name: Output URL
-        run: echo "🧪 Staging: https://${{ github.repository_owner }}.github.io/reddit-client-even/staging/"
+        run: |
+          echo "🧪 Staging: https://${{ github.repository_owner }}.github.io/reddit-client-even/staging/"
