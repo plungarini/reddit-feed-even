@@ -1,9 +1,9 @@
-import { Router } from 'express';
+import { Hono } from 'hono';
 
-const router = Router();
+const router = new Hono();
 
-router.get('/', (_req, res) => {
-	res.json({ ok: true, timestamp: Date.now() });
+router.get('/', (c) => {
+	return c.json({ ok: true, timestamp: Date.now() });
 });
 
 export default router;

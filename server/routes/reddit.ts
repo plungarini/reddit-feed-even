@@ -1,19 +1,19 @@
-import { Router } from 'express';
+import { Hono } from 'hono';
 
-const router = Router();
+const router = new Hono();
 
 // ─── Auth test endpoint ─────────────────
-router.get('/test-auth', async (req, res) => {
+router.get('/test-auth', async (c) => {
 	try {
-		const token = req.headers['x-reddit-token'] as string | undefined;
-		const session = req.headers['x-reddit-session'] as string | undefined;
+		const token = c.req.header('x-reddit-token');
+		const session = c.req.header('x-reddit-session');
 
 		const cookies: string[] = [];
 		if (token) cookies.push(`token_v2=${token}`);
 		if (session) cookies.push(`reddit_session=${session}`);
 
 		const headers: Record<string, string> = {
-			'User-Agent': (req.headers['x-reddit-user-agent'] as string) || 'reddit-client-even/1.0',
+			'User-Agent': c.req.header('x-reddit-user-agent') || 'reddit-client-even/1.0',
 			Accept: 'application/json',
 		};
 		if (cookies.length > 0) {
@@ -29,31 +29,29 @@ router.get('/test-auth', async (req, res) => {
 		const text = await response.text();
 		
 		if (response.status === 305 || response.status === 302 || response.status === 301) {
-			res.json({
+			return c.json({
 				status: response.status,
 				authenticated: false,
 				username: null,
 				error: `Redirect to: ${response.headers.get('location')}`,
 			});
-			return;
 		}
 
 		let data;
 		try {
 			data = JSON.parse(text);
 		} catch (e) {
-			res.json({
+			return c.json({
 				status: response.status,
 				authenticated: false,
 				username: null,
 				error: 'Not valid JSON response',
 				bodyPreview: text.slice(0, 200),
 			});
-			return;
 		}
 
 		const username = data.name || data.data?.name || null;
-		res.json({
+		return c.json({
 			status: response.status,
 			authenticated: !!username,
 			username: username,
@@ -62,21 +60,28 @@ router.get('/test-auth', async (req, res) => {
 		});
 	} catch (err) {
 		const message = err instanceof Error ? err.message : String(err);
-		res.status(500).json({ error: message });
+		return c.json({ error: message }, 500);
 	}
 });
 
 // ─── Reddit API proxy ───────────────────
-router.use('/reddit', async (req, res) => {
+router.all('/reddit/*', async (c) => {
 	try {
-		const redditUrl = new URL(`https://www.reddit.com${req.path}`);
-		for (const [k, v] of Object.entries(req.query)) {
+		// In Hono, c.req.path is the full path. 
+		// We want to extract the part after /reddit
+		const path = c.req.path.includes('/reddit/') 
+			? c.req.path.split('/reddit/')[1] 
+			: c.req.path.replace('/reddit', '');
+		
+		const redditUrl = new URL(`https://www.reddit.com/${path}`);
+		const query = c.req.query();
+		for (const [k, v] of Object.entries(query)) {
 			redditUrl.searchParams.set(k, String(v));
 		}
 
-		const token = req.headers['x-reddit-token'] as string | undefined;
-		const session = req.headers['x-reddit-session'] as string | undefined;
-		const ua = (req.headers['x-reddit-user-agent'] as string) || 'reddit-client-even/1.0';
+		const token = c.req.header('x-reddit-token');
+		const session = c.req.header('x-reddit-session');
+		const ua = c.req.header('x-reddit-user-agent') || 'reddit-client-even/1.0';
 
 		const cookies: string[] = [];
 		if (token) cookies.push(`token_v2=${token}`);
@@ -97,18 +102,16 @@ router.use('/reddit', async (req, res) => {
 		});
 
 		if (!response.ok) {
-			const body = await response.text();
-			res.status(response.status).json({
+			return c.json({
 				error: `Reddit API error: ${response.status}`,
-			});
-			return;
+			}, response.status as any);
 		}
 
 		const text = await response.text();
-		res.status(200).set('Content-Type', 'application/json').send(text);
+		return c.text(text, 200, { 'Content-Type': 'application/json' });
 	} catch (err) {
 		const message = err instanceof Error ? err.message : String(err);
-		res.status(500).json({ error: message });
+		return c.json({ error: message }, 500);
 	}
 });
 
