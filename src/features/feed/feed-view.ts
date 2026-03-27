@@ -66,7 +66,6 @@ export class FeedView {
 			containerTotalNum: containers.length,
 			textObject: containers,
 		});
-		console.log('[FeedView] rebuildPageContainer params:', JSON.stringify(rebuildParam, null, 2));
 
 		const ok = await this.bridge.rebuildPageContainer(rebuildParam);
 		if (!ok) {

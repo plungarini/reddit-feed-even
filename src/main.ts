@@ -78,7 +78,6 @@ async function showStatus(bridge: Bridge, content: string): Promise<void> {
 	if (!pageCreated) {
 		console.log('[SDK] createStartUpPageContainer...');
 		const startupParam = new CreateStartUpPageContainer(statusParams(content));
-		console.log('[SDK] createStartUpPageContainer params:', JSON.stringify(startupParam, null, 2));
 		const result = await bridge.createStartUpPageContainer(startupParam);
 		console.log(
 			'[SDK] createStartUpPageContainer result:',
