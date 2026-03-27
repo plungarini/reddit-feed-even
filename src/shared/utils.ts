@@ -51,7 +51,7 @@ export function normalizeWebText(text: string): string {
 			// Typography: replace common Unicode punctuation with ASCII equivalents
 			.replaceAll(/[\u2018\u2019]/g, "'") // curly single quotes -> '
 			.replaceAll(/[\u201C\u201D]/g, '"') // curly double quotes -> "
-			.replaceAll('\u2026', '...') // ellipsis -> ...
+			.replaceAll('\u2026', '…') // ellipsis -> ...
 			.replaceAll(/[\u2013\u2014]/g, '-') // en/em dash -> -
 			.replaceAll('\u00B7', '.') // middle dot -> .
 			.replaceAll('\u2022', '-') // bullet -> -
@@ -69,4 +69,9 @@ export function normalizeWebText(text: string): string {
 
 			.trim()
 	);
+}
+
+export function capitalizeText(text: string): string {
+	const parts = text.split(' ');
+	return parts.map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
 }

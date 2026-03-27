@@ -16,9 +16,14 @@
  *   Double tap             → back to feed
  */
 
-import { EvenAppBridge, RebuildPageContainer, TextContainerProperty } from '@evenrealities/even_hub_sdk';
+import {
+	EvenAppBridge,
+	RebuildPageContainer,
+	TextContainerProperty,
+	TextContainerUpgrade,
+} from '@evenrealities/even_hub_sdk';
 import { CachedPost } from '../../core/types';
-import { normalizeWebText } from '../../shared/utils';
+import { capitalizeText, normalizeWebText } from '../../shared/utils';
 
 const MAX_CHARS = 1000; // SDK limit for rebuild
 
@@ -64,7 +69,7 @@ export class DetailView {
 			content: `  r/${post.subreddit}  [ ${score}↑  ${comments}c ]`,
 		});
 
-		const content = await this.buildContent(post);
+		const content = await this.buildContent(post, 'create');
 		console.log(`[DetailView] render post=${post.id} len=${content.length} changed=${postChanged}`);
 
 		const detail = new TextContainerProperty({
@@ -91,8 +96,32 @@ export class DetailView {
 			);
 			console.log('[DetailView] rebuildPageContainer:', ok);
 			if (!ok) throw new Error('rebuildPageContainer returned false (detail)');
+
+			if (post.contentType === 'link') {
+				await this.updateContent(post);
+			}
 		} catch (error) {
 			console.error('[DetailView] rebuildPageContainer failed', error);
+		}
+	}
+
+	async updateContent(post: CachedPost) {
+		const content = await this.buildContent(post, 'update');
+		console.log(`[DetailView] updateContent post=${post.id} len=${content.length}`);
+
+		try {
+			const container = new TextContainerUpgrade({
+				containerID: 2,
+				containerName: 'detail',
+				contentLength: content.length,
+				contentOffset: 0,
+				content,
+			});
+			const ok = await this.bridge.textContainerUpgrade(container);
+			console.log('[DetailView] textContainerUpgrade:', ok);
+			if (!ok) throw new Error('textContainerUpgrade returned false (detail)');
+		} catch (error) {
+			console.error('[DetailView] textContainerUpgrade failed', error);
 		}
 	}
 
@@ -109,31 +138,41 @@ export class DetailView {
 	 *
 	 *   tap: comments  dbl: back
 	 */
-	private async buildContent(post: CachedPost): Promise<string> {
-		const lines: string[] = [];
-		// Title (may wrap)
-		lines.push(post.title);
+	private async buildContent(post: CachedPost, mode: 'create' | 'update'): Promise<string> {
+		const CHARS_LIMIT = mode === 'update' ? 2000 : 1000;
 
-		// Body or content indicator
-		if (post.contentType === 'self' && post.selftext) {
-			const body = '───────────────────────────\n' + normalizeWebText(post.selftext);
-			const truncated = body.length > 600 ? body.substring(0, 597) + '...' : body;
-			lines.push(truncated);
-		} else {
-			lines.push('');
-			let contentLabel = `[${post.contentType.toUpperCase()}]`;
-			if (post.contentType === 'link') {
-				const { lines: linkLines, contentLabel: linkContentLabel } = await buildLinkPreview(post.url, this.proxyUrl);
-				lines.push(...linkLines);
-				contentLabel = linkContentLabel;
+		let totalChars = 0;
+		const lines: string[] = [];
+
+		lines.push(post.title);
+		totalChars += post.title.length;
+
+		const attachmentLines = [''];
+		if (post.contentType !== 'self') {
+			const normContentLabel = post.contentType === 'link' ? 'Loading Link Preview…' : post.contentType + ' Attachment';
+			let contentLabel = `╭─────────────────────────╮\n│    ${capitalizeText(normContentLabel)}\n╰─────────────────────────╯`;
+			if (post.contentType === 'link' && mode === 'update') {
+				const linkLines = await buildLinkPreview(post.url, this.proxyUrl);
+				attachmentLines.push(...linkLines);
+			} else {
+				attachmentLines.push(contentLabel);
 			}
-			lines.push(contentLabel);
 		}
 
-		// Footer: author, time
-		lines.push('', `u/${post.author} • ${timeAgo(post.createdUtc)}`);
+		const attachmentContent = attachmentLines.join('\n');
+		const footerContent = `\nu/${post.author} • ${timeAgo(post.createdUtc)}`;
+		totalChars += attachmentContent.length + footerContent.length;
 
-		return lines.join('\n').substring(0, MAX_CHARS);
+		if (post.selftext) {
+			const remainingChars = CHARS_LIMIT - totalChars;
+			const body = '───────────────────────────\n' + normalizeWebText(post.selftext);
+			const truncated = body.length > remainingChars ? body.substring(0, remainingChars - 3) + '…' : body;
+			lines.push(truncated);
+		}
+
+		lines.push(attachmentContent, footerContent);
+
+		return lines.join('\n');
 	}
 }
 
@@ -162,14 +201,13 @@ function timeAgo(createdUtc: number): string {
 	return `${Math.floor(secs / 604800)}w`;
 }
 
-async function buildLinkPreview(url: string, proxyUrl: string): Promise<{ lines: string[]; contentLabel: string }> {
+async function buildLinkPreview(url: string, proxyUrl: string): Promise<string[]> {
 	const MAX_LINE_LEN = 52;
 	const MAX_DESC_LEN = 200;
 
 	const lines: string[] = [];
-	let contentLabel = `[LINK]`;
 	const { domain, title, description } = await extractLink(url, proxyUrl);
-	contentLabel += ` ${domain}`;
+	let contentLabel = `╭─────────────────────────╮\n│    Link to ${domain}\n╰─────────────────────────╯`;
 
 	if (title) {
 		const titleParts = getStringChunks(title, MAX_LINE_LEN).map((t) => `│ ${t}`);
@@ -185,7 +223,9 @@ async function buildLinkPreview(url: string, proxyUrl: string): Promise<{ lines:
 		);
 		lines.push('│', ...descriptionChunks);
 	}
-	return { lines, contentLabel };
+
+	lines.push(contentLabel);
+	return lines;
 }
 
 function getStringChunks(text: string, maxLength: number): string[] {
@@ -226,7 +266,7 @@ async function extractLink(
 	try {
 		const previewUrl = `${proxyUrl}/preview?url=${encodeURIComponent(url)}`;
 		console.log(`[DetailView] Fetching preview: ${previewUrl}`);
-		const response = await fetch(previewUrl, { signal: AbortSignal.timeout(10000) });
+		const response = await fetch(previewUrl /* , { signal: AbortSignal.timeout(10000) } */);
 		if (response.ok) {
 			const data = await response.json<{
 				title?: string;
