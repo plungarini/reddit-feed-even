@@ -18,22 +18,30 @@
 
 import { EvenAppBridge, RebuildPageContainer, TextContainerProperty } from '@evenrealities/even_hub_sdk';
 import { CachedPost } from '../../core/types';
+import { normalizeWebText } from '../../shared/utils';
 
 const MAX_CHARS = 1000; // SDK limit for rebuild
 
 export class DetailView {
 	private readonly bridge: EvenAppBridge;
+	private readonly proxyUrl: string;
 	private lastPostId: string | null = null;
 
-	constructor(bridge: EvenAppBridge) {
+	constructor(bridge: EvenAppBridge, proxyUrl?: string) {
 		this.bridge = bridge;
+		const host = (globalThis as any)?.location?.hostname || 'localhost';
+		const defaultProxy = `http://${host}:3001/api`;
+		this.proxyUrl = proxyUrl ? (proxyUrl.endsWith('/') ? proxyUrl.slice(0, -1) : proxyUrl) : defaultProxy;
+		if (this.proxyUrl && !this.proxyUrl.endsWith('/api')) {
+			this.proxyUrl = `${this.proxyUrl}/api`;
+		}
 	}
 
 	/**
 	 * Render post detail - single text container with scrollable content
 	 */
 	async render(post: CachedPost): Promise<void> {
-		if (!post || !post.id) {
+		if (!post?.id) {
 			console.error('[DetailView] Invalid post');
 			return;
 		}
@@ -56,7 +64,7 @@ export class DetailView {
 			content: `  r/${post.subreddit}  [ ${score}↑  ${comments}c ]`,
 		});
 
-		const content = this.buildContent(post);
+		const content = await this.buildContent(post);
 		console.log(`[DetailView] render post=${post.id} len=${content.length} changed=${postChanged}`);
 
 		const detail = new TextContainerProperty({
@@ -70,7 +78,7 @@ export class DetailView {
 			paddingLength: 12,
 			containerID: 2,
 			containerName: 'detail',
-			isEventCapture: 1, // Captures scroll for content scrolling
+			isEventCapture: 1,
 			content,
 		});
 
@@ -101,21 +109,23 @@ export class DetailView {
 	 *
 	 *   tap: comments  dbl: back
 	 */
-	private buildContent(post: CachedPost): string {
+	private async buildContent(post: CachedPost): Promise<string> {
 		const lines: string[] = [];
 		// Title (may wrap)
-		lines.push(post.title, '');
+		lines.push(post.title);
 
 		// Body or content indicator
 		if (post.contentType === 'self' && post.selftext) {
-			const body = stripMarkdown(post.selftext);
-			// Limit body to prevent overflow
+			const body = '───────────────────────────\n' + normalizeWebText(post.selftext);
 			const truncated = body.length > 600 ? body.substring(0, 597) + '...' : body;
 			lines.push(truncated);
 		} else {
+			lines.push('');
 			let contentLabel = `[${post.contentType.toUpperCase()}]`;
 			if (post.contentType === 'link') {
-				contentLabel += ` ${extractDomain(post.url)}`;
+				const { lines: linkLines, contentLabel: linkContentLabel } = await buildLinkPreview(post.url, this.proxyUrl);
+				lines.push(...linkLines);
+				contentLabel = linkContentLabel;
 			}
 			lines.push(contentLabel);
 		}
@@ -152,27 +162,92 @@ function timeAgo(createdUtc: number): string {
 	return `${Math.floor(secs / 604800)}w`;
 }
 
-function extractDomain(url: string): string {
-	if (!url) return '';
-	try {
-		return new URL(url).hostname.replace(/^www\./, '');
-	} catch {
-		return url.substring(0, 30);
+async function buildLinkPreview(url: string, proxyUrl: string): Promise<{ lines: string[]; contentLabel: string }> {
+	const MAX_LINE_LEN = 52;
+	const MAX_DESC_LEN = 200;
+
+	const lines: string[] = [];
+	let contentLabel = `[LINK]`;
+	const { domain, title, description } = await extractLink(url, proxyUrl);
+	contentLabel += ` ${domain}`;
+
+	if (title) {
+		const titleParts = getStringChunks(title, MAX_LINE_LEN).map((t) => `│ ${t}`);
+
+		lines.push(`╭─────────────────────────╮`, ...titleParts);
+		contentLabel = `│\n╰  ${domain} ╯`;
 	}
+	if (description) {
+		const normDescription =
+			description.length > MAX_DESC_LEN ? description.trim().substring(0, MAX_DESC_LEN - 3) + '…' : description.trim();
+		const descriptionChunks = getStringChunks(normDescription, MAX_LINE_LEN).map(
+			(d, i) => `│ ${i === 0 ? '> ' : ''}${d}`,
+		);
+		lines.push('│', ...descriptionChunks);
+	}
+	return { lines, contentLabel };
 }
 
-function stripMarkdown(text: string): string {
-	if (!text) return '';
-	return text
-		.replace(/\*\*(.+?)\*\*/g, '$1')
-		.replace(/\*(.+?)\*/g, '$1')
-		.replace(/__(.+?)__/g, '$1')
-		.replace(/_(.+?)_/g, '$1')
-		.replace(/~~(.+?)~~/g, '$1')
-		.replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1')
-		.replace(/^#{1,6}\s+/gm, '')
-		.replace(/^>\s*/gm, '  ')
-		.replace(/`{1,3}([^`]+)`{1,3}/g, '$1')
-		.replace(/\n{3,}/g, '\n\n')
-		.trim();
+function getStringChunks(text: string, maxLength: number): string[] {
+	if (!text) {
+		return [];
+	}
+
+	const words = text.split(' ');
+	const lines = [];
+	let currentLine = '';
+
+	for (const word of words) {
+		if ((currentLine + word).length > maxLength) {
+			if (currentLine === '') {
+				lines.push(word.substring(0, maxLength));
+				currentLine = word.substring(maxLength) + ' ';
+			} else {
+				lines.push(currentLine.trim());
+				currentLine = word + ' ';
+			}
+		} else {
+			currentLine += word + ' ';
+		}
+	}
+
+	if (currentLine.trim()) {
+		lines.push(currentLine.trim());
+	}
+
+	return lines;
+}
+
+async function extractLink(
+	url: string,
+	proxyUrl: string,
+): Promise<{ domain: string; title?: string; description?: string }> {
+	if (!url) return { domain: '' };
+	try {
+		const previewUrl = `${proxyUrl}/preview?url=${encodeURIComponent(url)}`;
+		console.log(`[DetailView] Fetching preview: ${previewUrl}`);
+		const response = await fetch(previewUrl, { signal: AbortSignal.timeout(10000) });
+		if (response.ok) {
+			const data = await response.json<{
+				title?: string;
+				description?: string;
+				url: string;
+			}>();
+			console.log('[DetailView] Preview data:', { data });
+			return {
+				domain: new URL(url).hostname.replace(/^www\./, ''),
+				title: data.title ? normalizeWebText(data.title) : undefined,
+				description: data.description ? normalizeWebText(data.description) : undefined,
+			};
+		}
+	} catch (e) {
+		console.warn('[DetailView] Preview fetch failed:', e);
+	}
+
+	// Fallback
+	try {
+		return { domain: new URL(url).hostname.replace(/^www\./, '') };
+	} catch {
+		return { domain: url.substring(0, 30) };
+	}
 }

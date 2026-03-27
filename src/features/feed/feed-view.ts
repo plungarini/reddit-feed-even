@@ -1,8 +1,8 @@
 import { EvenAppBridge, RebuildPageContainer, TextContainerProperty } from '@evenrealities/even_hub_sdk';
 import { CachedPost } from '../../core/types';
+import { normalizeWebText } from '../../shared/utils';
 
 export const POSTS_PER_PAGE = 4;
-/** containerID of the footer row; event_shield is FOOTER_CONTAINER_ID + 1 */
 export const FOOTER_CONTAINER_ID = POSTS_PER_PAGE + 1; // 5
 
 const POST_H = 64; // height of each post row (px);  4 × 64 = 256 px
@@ -131,16 +131,16 @@ export class FeedView {
 function formatPost(post: CachedPost): string {
 	const score = fmtScore(post.score);
 	const cmt = fmtNum(post.numComments);
-	const line1 = `r/${post.subreddit}  [ ${score}↑  ${cmt}c ]`;
+	const line1 = normalizeWebText(`r/${post.subreddit}  [ ${score}↑  ${cmt}c ]`);
 	const needsTruncate = post.title.length >= MAX_POST_TITLE_LEN;
-	const title = needsTruncate ? post.title.substring(0, MAX_POST_TITLE_LEN) : post.title;
+	const title = needsTruncate ? post.title.substring(0, MAX_POST_TITLE_LEN - 1) : post.title;
 
 	const normTruncate = (s: string) => {
 		const normStr = s.trim();
-		if (!needsTruncate) return normStr;
+		if (!needsTruncate) return normalizeWebText(normStr);
 		const last = normStr.at(-1);
-		if (!last || /[a-zA-Z0-9]/.test(last)) return normStr + '…';
-		return normStr.substring(0, normStr.length - 1) + '…';
+		if (!last || /[a-zA-Z0-9]/.test(last)) return normalizeWebText(normStr + '…');
+		return normalizeWebText(normStr.substring(0, normStr.length - 1) + '…');
 	};
 
 	return `  ${line1}\n  > ${normTruncate(title)}`;
