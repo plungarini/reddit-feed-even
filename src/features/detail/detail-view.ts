@@ -29,7 +29,7 @@ export class DetailView {
 
 	constructor(bridge: EvenAppBridge, proxyUrl?: string) {
 		this.bridge = bridge;
-		const host = (globalThis as any)?.location?.hostname || 'localhost';
+		const host = globalThis?.location?.hostname || 'localhost';
 		const defaultProxy = `http://${host}:3001/api`;
 		this.proxyUrl = proxyUrl ? (proxyUrl.endsWith('/') ? proxyUrl.slice(0, -1) : proxyUrl) : defaultProxy;
 		if (this.proxyUrl && !this.proxyUrl.endsWith('/api')) {

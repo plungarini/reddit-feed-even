@@ -97,7 +97,7 @@ router.get('/', async (c) => {
 	const url = c.req.query('url');
 	if (!url) return c.json({ error: 'Missing url parameter' }, 400);
 
-	const cache = caches.default;
+	const cache = (caches as unknown as { default: Cache }).default;
 	const cacheKey = new Request(`https://preview-cache/${encodeURIComponent(url)}`);
 	const cached = await cache.match(cacheKey);
 	if (cached) {
