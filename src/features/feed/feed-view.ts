@@ -1,32 +1,3 @@
-/**
- * Feed View
- *
- * Shows 4 posts + 1 footer row using 5 TextContainerProperty instances.
- * The highlighted row gets borderWidth:1 to indicate selection.
- * Scroll is handled manually in main.ts: SCROLL_BOTTOM/TOP events
- * increment/decrement highlightedIndex in PostStore, triggering a full
- * rebuildPageContainer to update which container has the border.
- *
- * Layout (576 × 288 px):
- *   IDs 1-4: post rows  (height=64 px each, yPosition = (id-1) × 64)
- *   ID  5:   footer row (height=32 px, yPosition=256)
- *
- * Why 4 posts?
- *   LVGL line height ≈ 28-30 px. Each post shows 2 lines (sub+score / title).
- *   Min readable row = 64 px (56 px usable after 4px padding each side).
- *   5 posts × 64 px = 320 px > 288 px — doesn't fit.
- *   4 posts × 64 px = 256 px + 32 px footer = 288 px ✓
- *
- * containerTotalNum = 5 (always, even when a post slot is empty)
- * isEventCapture    = 1 on container ID 1 only (G2 gestures are global)
- *
- * Navigation:
- *   SCROLL_DOWN: move highlight down; at footer (index 4) → next page
- *   SCROLL_UP:   move highlight up; at index 0 → prev page
- *   CLICK:       open highlighted post, or trigger load-more if footer selected
- *   DOUBLE_CLICK: refresh feed
- */
-
 import { EvenAppBridge, RebuildPageContainer, TextContainerProperty } from '@evenrealities/even_hub_sdk';
 import { CachedPost } from '../../core/types';
 
@@ -40,7 +11,7 @@ const FOOTER_Y = POSTS_PER_PAGE * POST_H; //           256 px
 const FOOTER_H = 288 - FOOTER_Y; //                    32 px
 const POST_PAD = 3; // padding inside each post row
 const FOOTER_PAD = 2; // tighter padding for the narrow footer
-const MAX_POST_TITLE_LEN = 58;
+const MAX_POST_TITLE_LEN = 56;
 
 export class FeedView {
 	private readonly bridge: EvenAppBridge;
@@ -67,9 +38,13 @@ export class FeedView {
 			textObject: containers,
 		});
 
-		const ok = await this.bridge.rebuildPageContainer(rebuildParam);
-		if (!ok) {
-			throw new Error('rebuildPageContainer returned false (feed)');
+		try {
+			const ok = await this.bridge.rebuildPageContainer(rebuildParam);
+			if (!ok) {
+				throw new Error('rebuildPageContainer returned false (feed)');
+			}
+		} catch (error) {
+			console.error('rebuildPageContainer failed (feed)', error);
 		}
 	}
 
@@ -85,8 +60,6 @@ export class FeedView {
 		const totalPages = Math.max(1, Math.ceil(posts.length / POSTS_PER_PAGE));
 
 		const containers: TextContainerProperty[] = [];
-
-		const isAtTopBoundary = pageIndex === 0 && highlightedIndex === 0;
 
 		// ── Post rows (0 – 3) ────────────────────────────────────────────────────
 		for (let i = 0; i < POSTS_PER_PAGE; i++) {
@@ -105,8 +78,7 @@ export class FeedView {
 					paddingLength: POST_PAD,
 					containerID: i + 1,
 					containerName: `post${i}`,
-					// Only capture events on first post if we aren't loading AND not at the top
-					isEventCapture: i === 0 && !loadingMore && !isAtTopBoundary ? 1 : 0,
+					isEventCapture: 0,
 					content: post ? formatPost(post) : '',
 				}),
 			);
@@ -126,20 +98,19 @@ export class FeedView {
 				paddingLength: FOOTER_PAD,
 				containerID: POSTS_PER_PAGE + 1,
 				containerName: 'footer',
-				isEventCapture: 0, // Footer never captures events (it was too bouncy)
+				isEventCapture: 0,
 				content: footerContent,
 			}),
 		);
 
 		// ── Invisible Event Shield (index 5) ───────────────────────────
-		// This container "swallows" the bounce animation when we want the UI frozen
 		containers.push(
 			new TextContainerProperty({
 				xPosition: 0,
 				yPosition: 0,
 				width: WIDTH,
 				height: 288,
-				isEventCapture: loadingMore || isAtTopBoundary ? 1 : 0,
+				isEventCapture: loadingMore ? 0 : 1,
 				content: '',
 				containerID: POSTS_PER_PAGE + 2,
 				containerName: 'event_shield',
@@ -166,13 +137,13 @@ function formatPost(post: CachedPost): string {
 
 	const normTruncate = (s: string) => {
 		const normStr = s.trim();
-		if (!needsTruncate) return s;
+		if (!needsTruncate) return normStr;
 		const last = normStr.at(-1);
-		if (!last || /[a-zA-Z0-9]/.test(last)) return s + '…';
+		if (!last || /[a-zA-Z0-9]/.test(last)) return normStr + '…';
 		return normStr.substring(0, normStr.length - 1) + '…';
 	};
 
-	return `  ${line1}\n  ${normTruncate(title)}`;
+	return `  ${line1}\n  > ${normTruncate(title)}`;
 }
 
 function buildFooter(loadingMore: boolean): string {
