@@ -175,7 +175,7 @@ async function main() {
 
 	// Views
 	const feedView = new FeedView(bridge);
-	const detailView = new DetailView(bridge);
+	const detailView = new DetailView(bridge, config.auth.proxyUrl);
 	const commentView = new CommentView(bridge);
 
 	// ─── Event handler ────────────────────────────────────────────────────────
