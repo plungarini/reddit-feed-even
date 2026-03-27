@@ -126,14 +126,32 @@ function copyLogs() {
 		})
 		.join('\n');
 
-	navigator.clipboard
-		.writeText(text)
-		.then(function () {
+	if (navigator.clipboard) {
+		navigator.clipboard
+			.writeText(text)
+			.then(function () {
+				showToast('✅ ' + logs.length + ' logs copied to clipboard');
+			})
+			.catch(function (err) {
+				showToast('Failed to copy: ' + err);
+			});
+	} else {
+		// Fallback for non-HTTPS / LAN IP contexts where clipboard API is unavailable
+		var ta = document.createElement('textarea');
+		ta.value = text;
+		ta.style.position = 'fixed';
+		ta.style.opacity = '0';
+		document.body.appendChild(ta);
+		ta.focus();
+		ta.select();
+		try {
+			document.execCommand('copy');
 			showToast('✅ ' + logs.length + ' logs copied to clipboard');
-		})
-		.catch(function (err) {
+		} catch (err) {
 			showToast('Failed to copy: ' + err);
-		});
+		}
+		document.body.removeChild(ta);
+	}
 }
 
 // ── State display ────────────────────────────────────────────────────────
