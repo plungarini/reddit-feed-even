@@ -164,6 +164,16 @@ export class PostStore {
 		}
 	}
 
+	/**
+	 * Load feed with a different endpoint (transient — does not persist to config).
+	 * Always force-fetches fresh posts, bypassing the in-memory cache.
+	 */
+	async loadFeedByEndpoint(endpoint: FeedConfig['endpoint']): Promise<void> {
+		const base = this.currentFeed ?? { endpoint, limit: 25, time: 'day' as const };
+		await this.loadFeed({ ...base, endpoint }, true);
+	}
+
+
 	// ========================================================================
 	// Page Navigation
 	// ========================================================================

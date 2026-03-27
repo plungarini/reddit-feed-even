@@ -25,6 +25,7 @@ import { UIManager } from './core/ui-manager';
 import { CommentView } from './features/comments/comment-view';
 import { DetailView } from './features/detail/detail-view';
 import { FeedView } from './features/feed/feed-view';
+import { FEED_ITEMS, MenuView } from './features/feed/menu-view';
 import { PostStore } from './features/feed/post-store';
 
 const CONFIG_KEY = 'reddit-client-config';
@@ -35,6 +36,9 @@ const AUTH_KEY = 'reddit-client-auth';
 let pageCreated = false; // set true after first createStartUpPageContainer call; never reset
 let isRendering = false;
 let renderQueued = false;
+
+// Transient active endpoint — NOT persisted; resets to config default on reload
+let activeEndpoint: import('./core/types').FeedEndpoint = 'hot';
 
 type Bridge = Awaited<ReturnType<typeof waitForEvenAppBridge>>;
 
@@ -177,6 +181,10 @@ async function main() {
 	const feedView = new FeedView(bridge);
 	const detailView = new DetailView(bridge, config.auth.proxyUrl);
 	const commentView = new CommentView(bridge);
+	const menuView = new MenuView(bridge);
+
+	// Seed the active endpoint from the loaded config
+	activeEndpoint = config.feed.endpoint;
 
 	// ─── Event handler ────────────────────────────────────────────────────────
 
@@ -210,13 +218,15 @@ async function main() {
 			handleDetailEvent(type, postStore, uiManager, commentView);
 		} else if (view === 'comments') {
 			handleCommentsEvent(type, listEvent, postStore, uiManager, commentView);
+		} else if (view === 'menu') {
+			handleMenuEvent(type, listEvent, postStore, uiManager);
 		}
 	});
 
 	// ─── Subscriptions ────────────────────────────────────────────────────────
 
 	postStore.subscribe(() => {
-		scheduleRender(bridge, postStore, uiManager, feedView, detailView, commentView);
+		scheduleRender(bridge, postStore, uiManager, feedView, detailView, commentView, menuView);
 	});
 
 	uiManager.subscribe(() => {
@@ -224,7 +234,7 @@ async function main() {
 		const view = uiManager.getCurrentView();
 		if (view !== 'comments') commentView.reset();
 
-		scheduleRender(bridge, postStore, uiManager, feedView, detailView, commentView);
+		scheduleRender(bridge, postStore, uiManager, feedView, detailView, commentView, menuView);
 	});
 
 	// ─── Load feed ────────────────────────────────────────────────────────────
@@ -286,8 +296,53 @@ function handleFeedEvent(type: OsEventTypeList | undefined, postStore: PostStore
 			});
 		}
 	} else if (type === OsEventTypeList.DOUBLE_CLICK_EVENT) {
-		console.log('[Event] Refreshing feed…');
-		postStore.refresh().catch(console.error);
+		// Double-click from feed → open the endpoint menu
+		console.log('[Event] Opening feed menu…');
+		const currentEntry = uiManager.getCurrentEntry();
+		uiManager.pushView({
+			view: 'menu',
+			pageIndex:      currentEntry.pageIndex,
+			highlightIndex: currentEntry.highlightIndex,
+			menuSelectedIndex: FEED_ITEMS.findIndex((item) => item.id === activeEndpoint),
+		});
+	}
+}
+
+/**
+ * Handle menu view events.
+ *
+ * ListContainerProperty sends listEvent with currentSelectItemIndex when the
+ * firmware-managed highlight changes (scroll). We mirror that into UIManager.
+ *   CLICK        → select highlighted endpoint, load feed, go back
+ *   DOUBLE_CLICK → exit menu without changing anything
+ */
+function handleMenuEvent(
+	type: OsEventTypeList | undefined,
+	listEvent: { currentSelectItemIndex?: number; currentSelectItemName?: string } | undefined,
+	postStore: PostStore,
+	uiManager: UIManager,
+): void {
+	const entry = uiManager.getCurrentEntry();
+	const currentIdx = entry.menuSelectedIndex ?? 0;
+
+	// Mirror firmware list-scroll into our navigation context
+	if (listEvent?.currentSelectItemIndex !== undefined) {
+		uiManager.updateCurrentContext({ menuSelectedIndex: listEvent.currentSelectItemIndex });
+	}
+
+	if (type === OsEventTypeList.CLICK_EVENT || type === undefined) {
+		// Use the firmware's reported index if available, otherwise our tracked one
+		const idx = listEvent?.currentSelectItemIndex ?? currentIdx;
+		const item = FEED_ITEMS[idx];
+		if (item) {
+			console.log(`[Menu] Selected endpoint: ${item.id}`);
+			activeEndpoint = item.id;
+			uiManager.goBack();
+			postStore.loadFeedByEndpoint(item.id).catch(console.error);
+		}
+	} else if (type === OsEventTypeList.DOUBLE_CLICK_EVENT) {
+		console.log('[Menu] Exiting without change');
+		uiManager.goBack();
 	}
 }
 
@@ -377,12 +432,13 @@ function scheduleRender(
 	feedView: FeedView,
 	detailView: DetailView,
 	commentView: CommentView,
+	menuView: MenuView,
 ): void {
 	if (isRendering) {
 		renderQueued = true;
 		return;
 	}
-	doRender(bridge, postStore, uiManager, feedView, detailView, commentView);
+	doRender(bridge, postStore, uiManager, feedView, detailView, commentView, menuView);
 }
 
 function doRender(
@@ -392,15 +448,16 @@ function doRender(
 	feedView: FeedView,
 	detailView: DetailView,
 	commentView: CommentView,
+	menuView: MenuView,
 ): void {
 	isRendering = true;
-	render(bridge, postStore, uiManager, feedView, detailView, commentView)
+	render(bridge, postStore, uiManager, feedView, detailView, commentView, menuView)
 		.catch((err) => console.error('[Render] Uncaught error:', err))
 		.finally(() => {
 			isRendering = false;
 			if (renderQueued) {
 				renderQueued = false;
-				doRender(bridge, postStore, uiManager, feedView, detailView, commentView);
+				doRender(bridge, postStore, uiManager, feedView, detailView, commentView, menuView);
 			}
 		});
 }
@@ -412,6 +469,7 @@ async function render(
 	feedView: FeedView,
 	detailView: DetailView,
 	commentView: CommentView,
+	menuView: MenuView,
 ): Promise<void> {
 	const entry = uiManager.getCurrentEntry();
 	const view = entry.view;
@@ -459,6 +517,10 @@ async function render(
 
 			case 'comments':
 				await commentView.render(state.comments, state.hasMoreComments, state.commentsLoading);
+				break;
+
+			case 'menu':
+				await menuView.render(activeEndpoint);
 				break;
 		}
 	} catch (e) {

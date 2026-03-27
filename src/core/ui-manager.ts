@@ -14,6 +14,7 @@ export interface NavigationEntry {
   pageIndex?: number;        // For feed: which page
   highlightIndex?: number;   // For feed: which post highlighted
   postId?: string;           // For detail/comments: which post
+  menuSelectedIndex?: number; // For menu: which item is highlighted
 }
 
 export interface UIState {

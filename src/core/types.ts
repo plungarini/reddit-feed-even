@@ -106,7 +106,7 @@ export interface CacheConfig {
 // UI Types
 // ============================================================================
 
-export type ViewMode = 'feed' | 'detail' | 'comments';
+export type ViewMode = 'feed' | 'detail' | 'comments' | 'menu';
 
 export interface RateLimitState {
   used: number;
