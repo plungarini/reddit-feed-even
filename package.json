@@ -2,8 +2,7 @@
 	"author": "Pietro Lungarini",
 	"dependencies": {
 		"@evenrealities/even_hub_sdk": "^0.0.9",
-		"hono": "^4.12.9",
-		"idb": "^8.0.0"
+		"hono": "^4.12.9"
 	},
 	"description": "A full-featured Reddit client for Even Realities G2 smart glasses",
 	"devDependencies": {

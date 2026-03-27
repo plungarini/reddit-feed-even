@@ -2,15 +2,18 @@
  * Post Store - Reactive State Management
  *
  * Manages the current feed with page-based navigation:
- * - Posts displayed in pages (5 posts per page)
+ * - Posts displayed in pages (4 posts per page)
  * - Highlight tracks selection within current page
  * - Background prefetch when nearing end of loaded posts
  * - Comment tree with toggleable collapse/expand
+ *
+ * Cache: simple in-memory TTL cache. Posts are held for `cacheDurationMs`
+ * (read from window.APP_CONFIG at startup). On refresh (double-tap) the
+ * cache is bypassed and fresh posts are fetched.
  */
 
 import { RedditClient } from '../../api/reddit-client';
 import { CachedPost, FeedConfig, RedditComment } from '../../core/types';
-import { PostCache } from '../../shared/storage/cache';
 
 type PostStoreListener = () => void;
 
@@ -18,7 +21,7 @@ export interface PostStoreState {
 	posts: CachedPost[];
 	currentPage: number; // Current page index (0, 1, 2...)
 	postsPerPage: number; // Fixed at 4
-	highlightedIndex: number; // Within current page (0-4)
+	highlightedIndex: number; // Within current page (0-3)
 	loading: boolean;
 	loadingMore: boolean;
 	hasMore: boolean;
@@ -28,7 +31,7 @@ export interface PostStoreState {
 	commentsPage: number;
 	hasMoreComments: boolean;
 	commentsLoading: boolean;
-	expandedComments: Set<string>; // Track which comments are expanded
+	expandedComments: Set<string>;
 }
 
 export class PostStore {
@@ -49,14 +52,18 @@ export class PostStore {
 	};
 
 	private readonly listeners: PostStoreListener[] = [];
-	private readonly cache: PostCache;
 	private readonly client: RedditClient;
 	private currentFeed: FeedConfig | null = null;
 	private afterCursor: string | null = null;
 
-	constructor(cache: PostCache, client: RedditClient) {
-		this.cache = cache;
+	// Simple in-memory cache — no persistence, no IndexedDB
+	private cachedPosts: CachedPost[] | null = null;
+	private cacheTimestamp = 0;
+	private readonly cacheDurationMs: number;
+
+	constructor(client: RedditClient, cacheDurationMs: number) {
 		this.client = client;
+		this.cacheDurationMs = cacheDurationMs;
 	}
 
 	// ========================================================================
@@ -122,31 +129,26 @@ export class PostStore {
 		this.notify();
 
 		try {
-			// Try cache first
-			if (!forceRefresh) {
-				const cached = this.cache.get(config);
-				if (cached && cached.length > 0) {
-					this.state.posts = cached;
-					this.state.loading = false;
-					this.notify();
-					return;
-				}
+			// Return cached posts if still fresh and not forced
+			if (!forceRefresh && this.cachedPosts !== null && Date.now() - this.cacheTimestamp < this.cacheDurationMs) {
+				console.log(
+					`[PostStore] Cache hit (${this.cachedPosts.length} posts, age=${Math.round((Date.now() - this.cacheTimestamp) / 1000)}s)`,
+				);
+				this.state.posts = this.cachedPosts;
+				this.state.loading = false;
+				this.notify();
+				return;
 			}
 
 			const { posts: fresh, after } = await this.client.fetchFeed(config);
 			this.afterCursor = after;
 			this.state.hasMore = after !== null;
 
-			const cachedPosts = await Promise.all(
-				fresh.map(async (p) => ({
-					...p,
-					cachedAt: Date.now(),
-					seen: await this.cache.isSeen(p.id),
-				})),
-			);
-
-			this.state.posts = cachedPosts;
-			await this.cache.set(config, cachedPosts);
+			const posts = fresh.map((p) => ({ ...p, cachedAt: Date.now(), seen: false }));
+			this.state.posts = posts;
+			this.cachedPosts = posts;
+			this.cacheTimestamp = Date.now();
+			console.log(`[PostStore] Fetched ${posts.length} posts, cached for ${Math.round(this.cacheDurationMs / 1000)}s`);
 		} catch (err) {
 			this.state.error = err instanceof Error ? err.message : 'Failed to load feed';
 			console.error('[PostStore] loadFeed error:', err);
@@ -208,7 +210,6 @@ export class PostStore {
 	 */
 	setHighlight(index: number): void {
 		const pagePosts = this.getCurrentPagePosts();
-		// Always clamp to actual posts (0-3), never the footer slot
 		const lastPostIndex = Math.max(0, pagePosts.length - 1);
 		const clamped = Math.max(0, Math.min(index, lastPostIndex));
 		if (clamped !== this.state.highlightedIndex) {
@@ -218,7 +219,7 @@ export class PostStore {
 	}
 
 	/**
-	 * Append more posts (infinite scroll)
+	 * Append more posts from Reddit (pagination cursor, not cached)
 	 */
 	private async loadMore(): Promise<void> {
 		if (!this.currentFeed || !this.afterCursor || this.state.loadingMore) {
@@ -234,15 +235,9 @@ export class PostStore {
 			this.state.hasMore = after !== null;
 
 			const existingIds = new Set(this.state.posts.map((p) => p.id));
-			const newPosts = await Promise.all(
-				fresh
-					.filter((p) => !existingIds.has(p.id))
-					.map(async (p) => ({
-						...p,
-						cachedAt: Date.now(),
-						seen: await this.cache.isSeen(p.id),
-					})),
-			);
+			const newPosts = fresh
+				.filter((p) => !existingIds.has(p.id))
+				.map((p) => ({ ...p, cachedAt: Date.now(), seen: false }));
 
 			this.state.posts = [...this.state.posts, ...newPosts];
 			console.log(`[PostStore] loadMore: added ${newPosts.length} posts, total=${this.state.posts.length}`);
@@ -271,7 +266,6 @@ export class PostStore {
 
 		try {
 			const comments = await this.client.fetchComments(post.id, 10);
-			// Process comments - add depth, default collapsed for replies
 			this.state.comments = this.processComments(comments);
 			this.state.hasMoreComments = comments.length === 10;
 		} catch (err) {
@@ -305,13 +299,13 @@ export class PostStore {
 	}
 
 	/**
-	 * Process raw comments - add depth and default collapsed state
+	 * Process raw comments — add depth and default collapsed state
 	 */
 	private processComments(comments: RedditComment[], depth = 0): RedditComment[] {
 		return comments.map((c) => ({
 			...c,
 			depth,
-			collapsed: depth > 0, // Collapse replies by default
+			collapsed: depth > 0,
 			replies: c.replies ? this.processComments(c.replies, depth + 1) : [],
 		}));
 	}

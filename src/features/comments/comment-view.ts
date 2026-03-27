@@ -85,12 +85,16 @@ export class CommentView {
       }),
     });
 
-    const ok = await this.bridge.rebuildPageContainer(new RebuildPageContainer({
-      containerTotalNum: 1,
-      listObject: [listContainer],
-    }));
-
-    console.log('[CommentView] rebuildPageContainer:', ok);
+    try {
+      const ok = await this.bridge.rebuildPageContainer(new RebuildPageContainer({
+        containerTotalNum: 1,
+        listObject: [listContainer],
+      }));
+      console.log('[CommentView] rebuildPageContainer:', ok);
+      if (!ok) throw new Error('rebuildPageContainer returned false (comments)');
+    } catch (error) {
+      console.error('[CommentView] rebuildPageContainer failed', error);
+    }
   }
 
   /**

@@ -4,7 +4,7 @@
  * Highly customizable settings for Reddit endpoints, caching, and UI behavior.
  */
 
-import { AppConfig, AuthConfig, FeedConfig, SyncConfig, CacheConfig, UIConfig } from './types';
+import { AppConfig, AuthConfig, FeedConfig, CacheConfig } from './types';
 
 export const DEFAULT_AUTH: AuthConfig = {
   type: 'cookie',
@@ -19,32 +19,19 @@ export const DEFAULT_FEED: FeedConfig = {
   limit: 25,
 };
 
-export const DEFAULT_SYNC: SyncConfig = {
-  enabled: true,
-  intervalMinutes: 30,
-  autoUpdate: true,
-  notifyOnNewPosts: false,
-};
+
 
 export const DEFAULT_CACHE: CacheConfig = {
-  maxPosts: 100,
-  expireAfterHours: 24,
-  cacheComments: true,
+  durationMs: 5 * 60 * 1000,
 };
 
-export const DEFAULT_UI: UIConfig = {
-  showThumbnails: false,
-  compactView: true,
-  defaultSort: 'hot',
-};
+
 
 export const DEFAULT_CONFIG: AppConfig = {
   version: '1.0.0',
   auth: DEFAULT_AUTH,
   feed: DEFAULT_FEED,
-  sync: DEFAULT_SYNC,
   cache: DEFAULT_CACHE,
-  ui: DEFAULT_UI,
 };
 
 // ============================================================================
@@ -175,20 +162,9 @@ export function validateConfig(config: Partial<AppConfig>): string[] {
     }
   }
 
-  if (config.sync) {
-    if (config.sync.intervalMinutes && config.sync.intervalMinutes < 5) {
-      errors.push('Sync interval must be at least 5 minutes');
-    }
-  }
 
-  if (config.cache) {
-    if (config.cache.maxPosts && config.cache.maxPosts > 500) {
-      errors.push('Max posts cannot exceed 500');
-    }
-    if (config.cache.expireAfterHours && config.cache.expireAfterHours > 168) {
-      errors.push('Cache expiration cannot exceed 7 days (168 hours)');
-    }
-  }
+
+
 
   return errors;
 }
@@ -199,8 +175,6 @@ export function mergeConfig(existing: AppConfig, updates: Partial<AppConfig>): A
     ...updates,
     auth: { ...existing.auth, ...updates.auth },
     feed: { ...existing.feed, ...updates.feed },
-    sync: { ...existing.sync, ...updates.sync },
     cache: { ...existing.cache, ...updates.cache },
-    ui: { ...existing.ui, ...updates.ui },
   };
 }

@@ -40,8 +40,7 @@ export class AuthManager {
 
 	/**
 	 * Initialize authentication.
-	 * For feed reading, we just need to have the tokens - no modhash needed.
-	 * Modhash is only required for POST actions (voting, saving) which we don't support yet.
+	 * For feed reading, we just need to have the tokens.
 	 */
 	async initialize(): Promise<void> {
 		if (this.isInitialized) {

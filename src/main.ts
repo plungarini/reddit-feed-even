@@ -19,15 +19,13 @@ import {
 import { AuthManager } from './api/auth-manager';
 import { RateLimiter } from './api/rate-limiter';
 import { RedditClient } from './api/reddit-client';
-import { DEFAULT_CONFIG } from './core/config';
+import { DEFAULT_CONFIG, mergeConfig } from './core/config';
 import type { AppConfig } from './core/types';
 import { UIManager } from './core/ui-manager';
 import { CommentView } from './features/comments/comment-view';
 import { DetailView } from './features/detail/detail-view';
 import { FeedView } from './features/feed/feed-view';
 import { PostStore } from './features/feed/post-store';
-import { PostCache } from './shared/storage/cache';
-import { StorageService } from './shared/storage/storage';
 
 const CONFIG_KEY = 'reddit-client-config';
 const AUTH_KEY = 'reddit-client-auth';
@@ -90,14 +88,22 @@ async function showStatus(bridge: Bridge, content: string): Promise<void> {
 			// result=1 means the glasses already have a page from a prior session.
 			// Take ownership immediately by rebuilding the existing page.
 			console.log('[SDK] Page already exists — falling back to rebuildPageContainer...');
-			const ok = await bridge.rebuildPageContainer(new RebuildPageContainer(statusParams(content)));
-			console.log('[SDK] rebuildPageContainer (session takeover):', ok);
-			if (ok) pageCreated = true;
+			try {
+				const ok = await bridge.rebuildPageContainer(new RebuildPageContainer(statusParams(content)));
+				console.log('[SDK] rebuildPageContainer (session takeover):', ok);
+				if (ok) pageCreated = true;
+			} catch (error) {
+				console.error('[SDK] rebuildPageContainer (session takeover) failed:', error);
+			}
 		}
 	} else {
 		console.log('[SDK] rebuildPageContainer (status)...');
-		const ok = await bridge.rebuildPageContainer(new RebuildPageContainer(statusParams(content)));
-		console.log('[SDK] rebuildPageContainer (status):', ok);
+		try {
+			const ok = await bridge.rebuildPageContainer(new RebuildPageContainer(statusParams(content)));
+			console.log('[SDK] rebuildPageContainer (status):', ok);
+		} catch (error) {
+			console.error('[SDK] rebuildPageContainer (status) failed:', error);
+		}
 	}
 }
 
@@ -123,7 +129,18 @@ async function main() {
 	const authData = localStorage.getItem(AUTH_KEY);
 	const configData = localStorage.getItem(CONFIG_KEY);
 	const auth = authData ? JSON.parse(authData) : null;
-	const hasAuth = !!(auth?.tokenV2 && auth?.session);
+
+	// Proper config initialization: defaults < saved config < legacy auth data
+	const savedConfig = configData ? JSON.parse(configData) : {};
+	const config: AppConfig = mergeConfig(DEFAULT_CONFIG, savedConfig);
+
+	// Legacy auth override: ensure authData's token/session take precedence if found
+	if (auth?.tokenV2 && auth?.session) {
+		config.auth.tokenV2 = auth.tokenV2;
+		config.auth.session = auth.session;
+	}
+
+	const hasAuth = !!(config.auth.tokenV2 && config.auth.session);
 
 	console.log('[RedditClient] hasAuth:', hasAuth);
 	debugState({ hasAuth });
@@ -133,47 +150,14 @@ async function main() {
 	debugState({ status: 'loading' });
 	await showStatus(bridge, 'Reddit Client\n\nLoading feed...');
 
-	// Services
-	const storage = new StorageService();
-	await storage.initialize();
-
-	// Parse saved config and merge deeply with defaults
-	const savedConfig = JSON.parse(configData || '{}');
-	const config: AppConfig = {
-		...DEFAULT_CONFIG,
-		...savedConfig,
-		auth: {
-			...DEFAULT_CONFIG.auth,
-			...savedConfig.auth,
-			tokenV2: auth?.tokenV2 || '',
-			session: auth?.session || '',
-			userAgent: auth?.userAgent || DEFAULT_CONFIG.auth.userAgent,
-			// proxyUrl is saved into AUTH_KEY by debug-panel.js, not CONFIG_KEY
-			proxyUrl: auth?.proxyUrl || savedConfig.auth?.proxyUrl || '',
-		},
-		feed: {
-			...DEFAULT_CONFIG.feed,
-			...savedConfig.feed,
-		},
-		cache: {
-			...DEFAULT_CONFIG.cache,
-			...savedConfig.cache,
-		},
-		sync: {
-			...DEFAULT_CONFIG.sync,
-			...savedConfig.sync,
-		},
-		ui: {
-			...DEFAULT_CONFIG.ui,
-			...savedConfig.ui,
-		},
-	};
+	// Cache duration: read from config, min 60s
+	const cacheDurationMs = Math.max(60_000, config.cache.durationMs);
+	console.log(`[RedditClient] Cache duration: ${cacheDurationMs / 1000}s`);
 
 	const authManager = new AuthManager(config.auth);
 	const rateLimiter = new RateLimiter();
 	const redditClient = new RedditClient(authManager, rateLimiter);
-	const postCache = new PostCache(storage, { maxStoragePosts: config.cache.maxPosts });
-	const postStore = new PostStore(postCache, redditClient);
+	const postStore = new PostStore(redditClient, cacheDurationMs);
 	const uiManager = new UIManager();
 
 	// Reddit client init

@@ -74,14 +74,18 @@ export class DetailView {
 			content,
 		});
 
-		const ok = await this.bridge.rebuildPageContainer(
-			new RebuildPageContainer({
-				containerTotalNum: 2,
-				textObject: [header, detail],
-			}),
-		);
-
-		console.log('[DetailView] rebuildPageContainer:', ok);
+		try {
+			const ok = await this.bridge.rebuildPageContainer(
+				new RebuildPageContainer({
+					containerTotalNum: 2,
+					textObject: [header, detail],
+				}),
+			);
+			console.log('[DetailView] rebuildPageContainer:', ok);
+			if (!ok) throw new Error('rebuildPageContainer returned false (detail)');
+		} catch (error) {
+			console.error('[DetailView] rebuildPageContainer failed', error);
+		}
 	}
 
 	/**

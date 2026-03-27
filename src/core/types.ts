@@ -44,9 +44,6 @@ export interface RedditListing<T> {
   data: {
     children: Array<{ kind: string; data: T }>;
     after: string | null;
-    before: string | null;
-    modhash?: string;
-    dist?: number;
   };
 }
 
@@ -88,9 +85,7 @@ export interface AppConfig {
   version: string;
   auth: AuthConfig;
   feed: FeedConfig;
-  sync: SyncConfig;
   cache: CacheConfig;
-  ui: UIConfig;
 }
 
 export interface AuthConfig {
@@ -98,40 +93,20 @@ export interface AuthConfig {
   tokenV2?: string;
   session?: string;
   userAgent: string;
-  modhash?: string;
   proxyUrl?: string;
 }
 
-export interface SyncConfig {
-  enabled: boolean;
-  intervalMinutes: number;
-  autoUpdate: boolean;
-  notifyOnNewPosts: boolean;
-}
-
 export interface CacheConfig {
-  maxPosts: number;
-  expireAfterHours: number;
-  cacheComments: boolean;
+  durationMs: number;
 }
 
-export interface UIConfig {
-  showThumbnails: boolean;
-  compactView: boolean;
-  defaultSort: SortOption;
-}
+
 
 // ============================================================================
 // UI Types
 // ============================================================================
 
 export type ViewMode = 'feed' | 'detail' | 'comments';
-
-export interface SyncResult {
-  success: boolean;
-  postsAdded: number;
-  error?: string;
-}
 
 export interface RateLimitState {
   used: number;
@@ -150,8 +125,3 @@ export interface RedditClientInterface {
   fetchComments(postId: string, limit?: number): Promise<RedditComment[]>;
 }
 
-export interface CacheEntry {
-  posts: CachedPost[];
-  fetchedAt: number;
-  config: FeedConfig;
-}
