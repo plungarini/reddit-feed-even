@@ -12,6 +12,7 @@ dist/
 # Environment variables
 .env
 .env.local
+.dev.vars
 
 # IDE
 .vscode/
