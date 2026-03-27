@@ -126,14 +126,32 @@ function copyLogs() {
 		})
 		.join('\n');
 
-	navigator.clipboard
-		.writeText(text)
-		.then(function () {
+	if (navigator.clipboard) {
+		navigator.clipboard
+			.writeText(text)
+			.then(function () {
+				showToast('✅ ' + logs.length + ' logs copied to clipboard');
+			})
+			.catch(function (err) {
+				showToast('Failed to copy: ' + err);
+			});
+	} else {
+		// Fallback for non-HTTPS / LAN IP contexts where clipboard API is unavailable
+		var ta = document.createElement('textarea');
+		ta.value = text;
+		ta.style.position = 'fixed';
+		ta.style.opacity = '0';
+		document.body.appendChild(ta);
+		ta.focus();
+		ta.select();
+		try {
+			document.execCommand('copy');
 			showToast('✅ ' + logs.length + ' logs copied to clipboard');
-		})
-		.catch(function (err) {
+		} catch (err) {
 			showToast('Failed to copy: ' + err);
-		});
+		}
+		document.body.removeChild(ta);
+	}
 }
 
 // ── State display ────────────────────────────────────────────────────────
@@ -219,6 +237,10 @@ function loadSettings() {
 			document.getElementById('input-feed').value = cfg.feed.endpoint || 'hot';
 			/* document.getElementById('input-subreddit').value = cfg.feed.subreddit || ''; */
 		}
+		if (cfg.cache) {
+			const mins = cfg.cache.durationMs ? Math.round(cfg.cache.durationMs / 60000) : 5;
+			document.getElementById('input-cache').value = String(mins);
+		}
 		Object.assign(globalThis.__appState, { hasAuth: !!(auth.tokenV2 && auth.session) });
 	} catch (e) {
 		console.error('[Debug] Failed to load settings:', e);
@@ -245,7 +267,9 @@ function saveSettings() {
 		return;
 	}
 	localStorage.setItem(AUTH_KEY, JSON.stringify(auth));
-	const cfg = { feed: { endpoint: endpoint, subreddit: subreddit, limit: 25, time: 'day' } };
+	const rawCacheMins = parseInt(document.getElementById('input-cache')?.value, 10);
+	const cacheMins = isNaN(rawCacheMins) || rawCacheMins < 1 ? 5 : rawCacheMins;
+	const cfg = { feed: { endpoint: endpoint, subreddit: subreddit, limit: 25, time: 'day' }, cache: { durationMs: cacheMins * 60 * 1000 } };
 	localStorage.setItem(CONFIG_KEY, JSON.stringify(cfg));
 
 	Object.assign(globalThis.__appState, { hasAuth: !!token });
@@ -299,41 +323,10 @@ async function testAuth() {
 	}
 }
 
-async function clearCache() {
-	if (!confirm('Clear cache and reload posts?')) return;
-
-	try {
-		// Clear IndexedDB
-		const databases = await globalThis.indexedDB.databases();
-		for (const db of databases) {
-			if (db?.name?.includes('reddit')) {
-				await new Promise(function (resolve, reject) {
-					const req = globalThis.indexedDB.deleteDatabase(db.name);
-					req.onsuccess = resolve;
-					req.onerror = reject;
-				});
-				console.log('[Debug] Deleted IndexedDB:', db.name);
-			}
-		}
-
-		// Clear localStorage cache entries (keep auth and config)
-		const keysToRemove = [];
-		for (let i = 0; i < localStorage.length; i++) {
-			const key = localStorage.key(i);
-			if (key?.includes('reddit-client-db')) {
-				keysToRemove.push(key);
-			}
-		}
-		keysToRemove.forEach(function (key) {
-			localStorage.removeItem(key);
-			console.log('[Debug] Cleared localStorage:', key);
-		});
-
-		showToast('🧼 Cache cleared - reload to refresh posts');
-	} catch (err) {
-		console.error('[Debug] Failed to clear cache:', err);
-		showToast('Failed to clear cache: ' + err.message);
-	}
+function clearCache() {
+	if (!confirm('Clear in-memory cache and reload posts?')) return;
+	showToast('🧼 Reloading…');
+	setTimeout(function () { globalThis.location.reload(); }, 500);
 }
 
 // ── Boot ─────────────────────────────────────────────────────────────────

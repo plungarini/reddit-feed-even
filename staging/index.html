@@ -76,7 +76,7 @@
 		<!-- App entry point — initialises the glasses display -->
 
 		<link rel="stylesheet" href="ui/debug-panel.css" />
-		<script type="module" crossorigin src="/reddit-client-even/staging/assets/index-Cht2roYB.js"></script>
+		<script type="module" crossorigin src="/reddit-client-even/staging/assets/index-CmR1lDQs.js"></script>
 		<link rel="modulepreload" crossorigin href="/reddit-client-even/staging/assets/even-hub-BMaY9acy.js">
 	</head>
 	<body>
@@ -160,7 +160,12 @@
 						<option value="r/all">All - Everything</option>
 					</select>
 				</div>
-				<!-- <div class="field">
+				<div class="field">
+					<label>Cache duration (minutes)</label>
+					<input type="number" id="input-cache" min="1" placeholder="5" />
+					<small>How long to reuse fetched posts before hitting Reddit again. Min: 1 minute.</small>
+				</div>
+								<!-- <div class="field">
 					<label>Subreddit (leave empty for front page)</label>
 					<input type="text" id="input-subreddit" placeholder="e.g. technology" />
 				</div> -->
