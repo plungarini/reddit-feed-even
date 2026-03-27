@@ -52,30 +52,35 @@ main().catch((err) => {
 
 // ─── Status screen helpers ───────────────────────────────────────────────────
 
-function statusParams(content: string) {
+function statusParams(content: string, isError = false) {
+	const errorHeader = `╭────────  ERROR  ────────╮`;
+	const normContent = isError ? `${errorHeader}\n\n${content}` : `╭──  ${content}  ──╮`;
+
+	const contentWidth = isError ? 470 : normContent.length * 11;
+	const x = Math.floor((576 - contentWidth) / 2);
 	return {
 		containerTotalNum: 1,
 		textObject: [
 			new TextContainerProperty({
-				xPosition: 0,
+				xPosition: x,
 				yPosition: 0,
-				width: 576,
+				width: contentWidth + (isError ? 0 : 50),
 				height: 288,
 				borderWidth: 0,
 				paddingLength: 12,
 				containerID: 1,
 				containerName: 'main',
-				isEventCapture: 1,
-				content,
+				isEventCapture: 0,
+				content: normContent,
 			}),
 		],
 	};
 }
 
-async function showStatus(bridge: Bridge, content: string): Promise<void> {
+async function showStatus(bridge: Bridge, content: string, isError = false): Promise<void> {
 	if (!pageCreated) {
 		console.log('[SDK] createStartUpPageContainer...');
-		const startupParam = new CreateStartUpPageContainer(statusParams(content));
+		const startupParam = new CreateStartUpPageContainer(statusParams(content, isError));
 		const result = await bridge.createStartUpPageContainer(startupParam);
 		console.log(
 			'[SDK] createStartUpPageContainer result:',
@@ -89,7 +94,7 @@ async function showStatus(bridge: Bridge, content: string): Promise<void> {
 			// Take ownership immediately by rebuilding the existing page.
 			console.log('[SDK] Page already exists — falling back to rebuildPageContainer...');
 			try {
-				const ok = await bridge.rebuildPageContainer(new RebuildPageContainer(statusParams(content)));
+				const ok = await bridge.rebuildPageContainer(new RebuildPageContainer(statusParams(content, isError)));
 				console.log('[SDK] rebuildPageContainer (session takeover):', ok);
 				if (ok) pageCreated = true;
 			} catch (error) {
@@ -99,7 +104,7 @@ async function showStatus(bridge: Bridge, content: string): Promise<void> {
 	} else {
 		console.log('[SDK] rebuildPageContainer (status)...');
 		try {
-			const ok = await bridge.rebuildPageContainer(new RebuildPageContainer(statusParams(content)));
+			const ok = await bridge.rebuildPageContainer(new RebuildPageContainer(statusParams(content, isError)));
 			console.log('[SDK] rebuildPageContainer (status):', ok);
 		} catch (error) {
 			console.error('[SDK] rebuildPageContainer (status) failed:', error);
@@ -148,7 +153,7 @@ async function main() {
 	// Loading screen — establishes the page session via createStartUpPageContainer.
 	// All subsequent SDK calls (rebuildPageContainer) depend on this having been called first.
 	debugState({ status: 'loading' });
-	await showStatus(bridge, 'Reddit Client\n\nLoading feed...');
+	await showStatus(bridge, 'Loading your feed...');
 
 	// Cache duration: read from config, min 60s
 	const cacheDurationMs = Math.max(60_000, config.cache.durationMs);
@@ -425,7 +430,7 @@ async function render(
 		switch (view) {
 			case 'feed':
 				if (state.error && state.posts.length === 0) {
-					await showStatus(bridge, `Reddit Client\n\nError\n\n${state.error}`);
+					await showStatus(bridge, `Error: ${state.error}`);
 					return;
 				}
 				if (state.loading && state.posts.length === 0) {
@@ -459,7 +464,7 @@ async function render(
 	} catch (e) {
 		console.error('[Render] Error:', e);
 		try {
-			await showStatus(bridge, `Error\n\n${e instanceof Error ? e.message : String(e)}`);
+			await showStatus(bridge, `Error: ${e instanceof Error ? e.message : String(e)}`);
 		} catch {
 			/* ignore */
 		}
