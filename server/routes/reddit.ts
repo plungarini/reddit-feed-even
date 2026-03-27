@@ -20,7 +20,7 @@ router.get('/test-auth', async (c) => {
 			headers['Cookie'] = cookies.join('; ');
 		}
 
-		console.log('[Proxy] Testing auth with /api/me.json...');
+		console.log('[Proxy] Testing auth with /api/me.json…');
 		const response = await fetch('https://www.reddit.com/api/me.json', {
 			headers,
 			redirect: 'manual',

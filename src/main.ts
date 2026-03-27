@@ -79,7 +79,7 @@ function statusParams(content: string, isError = false) {
 
 async function showStatus(bridge: Bridge, content: string, isError = false): Promise<void> {
 	if (!pageCreated) {
-		console.log('[SDK] createStartUpPageContainer...');
+		console.log('[SDK] createStartUpPageContainer…');
 		const startupParam = new CreateStartUpPageContainer(statusParams(content, isError));
 		const result = await bridge.createStartUpPageContainer(startupParam);
 		console.log(
@@ -92,7 +92,7 @@ async function showStatus(bridge: Bridge, content: string, isError = false): Pro
 		} else {
 			// result=1 means the glasses already have a page from a prior session.
 			// Take ownership immediately by rebuilding the existing page.
-			console.log('[SDK] Page already exists — falling back to rebuildPageContainer...');
+			console.log('[SDK] Page already exists — falling back to rebuildPageContainer…');
 			try {
 				const ok = await bridge.rebuildPageContainer(new RebuildPageContainer(statusParams(content, isError)));
 				console.log('[SDK] rebuildPageContainer (session takeover):', ok);
@@ -102,7 +102,7 @@ async function showStatus(bridge: Bridge, content: string, isError = false): Pro
 			}
 		}
 	} else {
-		console.log('[SDK] rebuildPageContainer (status)...');
+		console.log('[SDK] rebuildPageContainer (status)…');
 		try {
 			const ok = await bridge.rebuildPageContainer(new RebuildPageContainer(statusParams(content, isError)));
 			console.log('[SDK] rebuildPageContainer (status):', ok);
@@ -115,7 +115,7 @@ async function showStatus(bridge: Bridge, content: string, isError = false): Pro
 // ─── Main ────────────────────────────────────────────────────────────────────
 
 async function main() {
-	console.log('[RedditClient] Starting...');
+	console.log('[RedditClient] Starting…');
 	debugState({ status: 'starting', bridgeReady: false });
 
 	// Bridge must come first
@@ -153,7 +153,7 @@ async function main() {
 	// Loading screen — establishes the page session via createStartUpPageContainer.
 	// All subsequent SDK calls (rebuildPageContainer) depend on this having been called first.
 	debugState({ status: 'loading' });
-	await showStatus(bridge, 'Loading your feed...');
+	await showStatus(bridge, 'Loading your feed…');
 
 	// Cache duration: read from config, min 60s
 	const cacheDurationMs = Math.max(60_000, config.cache.durationMs);
@@ -286,7 +286,7 @@ function handleFeedEvent(type: OsEventTypeList | undefined, postStore: PostStore
 			});
 		}
 	} else if (type === OsEventTypeList.DOUBLE_CLICK_EVENT) {
-		console.log('[Event] Refreshing feed...');
+		console.log('[Event] Refreshing feed…');
 		postStore.refresh().catch(console.error);
 	}
 }
@@ -434,7 +434,7 @@ async function render(
 					return;
 				}
 				if (state.loading && state.posts.length === 0) {
-					console.log('[Render] Waiting for initial posts...');
+					console.log('[Render] Waiting for initial posts…');
 					return;
 				}
 				await feedView.render(

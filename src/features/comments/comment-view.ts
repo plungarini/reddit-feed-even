@@ -19,10 +19,10 @@
  */
 
 import {
-  EvenAppBridge,
-  RebuildPageContainer,
-  ListContainerProperty,
-  ListItemContainerProperty,
+	EvenAppBridge,
+	ListContainerProperty,
+	ListItemContainerProperty,
+	RebuildPageContainer,
 } from '@evenrealities/even_hub_sdk';
 import { RedditComment } from '../../core/types';
 
@@ -32,150 +32,152 @@ const ITEM_WIDTH = 552;
 const MAX_ITEM_CHARS = 60;
 
 export class CommentView {
-  private readonly bridge: EvenAppBridge;
-  private readonly expandedComments = new Set<string>();
-  private visibleComments: RedditComment[] = [];
+	private readonly bridge: EvenAppBridge;
+	private readonly expandedComments = new Set<string>();
+	private visibleComments: RedditComment[] = [];
 
-  constructor(bridge: EvenAppBridge) {
-    this.bridge = bridge;
-  }
+	constructor(bridge: EvenAppBridge) {
+		this.bridge = bridge;
+	}
 
-  reset(): void {
-    this.expandedComments.clear();
-    this.visibleComments = [];
-  }
+	reset(): void {
+		this.expandedComments.clear();
+		this.visibleComments = [];
+	}
 
-  /**
-   * Render comments as native list container
-   */
-  async render(comments: RedditComment[], hasMore: boolean, loading: boolean): Promise<void> {
-    // Flatten tree based on expanded state
-    this.visibleComments = this.flattenVisible(comments);
+	/**
+	 * Render comments as native list container
+	 */
+	async render(comments: RedditComment[], hasMore: boolean, loading: boolean): Promise<void> {
+		// Flatten tree based on expanded state
+		this.visibleComments = this.flattenVisible(comments);
 
-    // Build list items
-    const itemNames: string[] = this.visibleComments.map(c => this.formatComment(c));
+		// Build list items
+		const itemNames: string[] = this.visibleComments.map((c) => this.formatComment(c));
 
-    // Add loading indicator or "Load more" item
-    if (loading) {
-      itemNames.push('Loading more comments...');
-    } else if (hasMore) {
-      itemNames.push('↓ Load more comments...');
-    }
+		// Add loading indicator or "Load more" item
+		if (loading) {
+			itemNames.push('Loading more comments…');
+		} else if (hasMore) {
+			itemNames.push('↓ Load more comments…');
+		}
 
-    console.log(`[CommentView] render comments=${this.visibleComments.length} items=${itemNames.length}`);
+		console.log(`[CommentView] render comments=${this.visibleComments.length} items=${itemNames.length}`);
 
-    // Single list container
-    const listContainer = new ListContainerProperty({
-      xPosition: 8,
-      yPosition: 8,
-      width: CONTAINER_WIDTH,
-      height: CONTAINER_HEIGHT,
-      borderWidth: 1,
-      borderColor: 5,
-      borderRadius: 6,
-      paddingLength: 4,
-      containerID: 1,
-      containerName: 'comment-list',
-      isEventCapture: 1,
-      itemContainer: new ListItemContainerProperty({
-        itemCount: itemNames.length,
-        itemWidth: ITEM_WIDTH,
-        isItemSelectBorderEn: 1,  // Native highlight border
-        itemName: itemNames,
-      }),
-    });
+		// Single list container
+		const listContainer = new ListContainerProperty({
+			xPosition: 8,
+			yPosition: 8,
+			width: CONTAINER_WIDTH,
+			height: CONTAINER_HEIGHT,
+			borderWidth: 1,
+			borderColor: 5,
+			borderRadius: 6,
+			paddingLength: 4,
+			containerID: 1,
+			containerName: 'comment-list',
+			isEventCapture: 1,
+			itemContainer: new ListItemContainerProperty({
+				itemCount: itemNames.length,
+				itemWidth: ITEM_WIDTH,
+				isItemSelectBorderEn: 1, // Native highlight border
+				itemName: itemNames,
+			}),
+		});
 
-    try {
-      const ok = await this.bridge.rebuildPageContainer(new RebuildPageContainer({
-        containerTotalNum: 1,
-        listObject: [listContainer],
-      }));
-      console.log('[CommentView] rebuildPageContainer:', ok);
-      if (!ok) throw new Error('rebuildPageContainer returned false (comments)');
-    } catch (error) {
-      console.error('[CommentView] rebuildPageContainer failed', error);
-    }
-  }
+		try {
+			const ok = await this.bridge.rebuildPageContainer(
+				new RebuildPageContainer({
+					containerTotalNum: 1,
+					listObject: [listContainer],
+				}),
+			);
+			console.log('[CommentView] rebuildPageContainer:', ok);
+			if (!ok) throw new Error('rebuildPageContainer returned false (comments)');
+		} catch (error) {
+			console.error('[CommentView] rebuildPageContainer failed', error);
+		}
+	}
 
-  /**
-   * Format comment as single-line list item
-   */
-  private formatComment(c: RedditComment): string {
-    const depth = c.depth ?? 0;
-    const indent = '  '.repeat(depth);
-    const prefix = depth > 0 ? '↳ ' : '';
+	/**
+	 * Format comment as single-line list item
+	 */
+	private formatComment(c: RedditComment): string {
+		const depth = c.depth ?? 0;
+		const indent = '  '.repeat(depth);
+		const prefix = depth > 0 ? '↳ ' : '';
 
-    // Check if collapsed
-    if (c.collapsed && c.replies?.length) {
-      const count = this.countAllReplies(c);
-      const preview = c.body.substring(0, 30);
-      const text = `${indent}[+${count}] u/${c.author}: ${preview}...`;
-      return text.length > MAX_ITEM_CHARS ? text.substring(0, MAX_ITEM_CHARS - 1) + '…' : text;
-    }
+		// Check if collapsed
+		if (c.collapsed && c.replies?.length) {
+			const count = this.countAllReplies(c);
+			const preview = c.body.substring(0, 30);
+			const text = `${indent}[+${count}] u/${c.author}: ${preview}...`;
+			return text.length > MAX_ITEM_CHARS ? text.substring(0, MAX_ITEM_CHARS - 1) + '…' : text;
+		}
 
-    const score = fmtScore(c.score);
-    const body = c.body.length > 40 ? c.body.substring(0, 37) + '...' : c.body;
-    const text = `${indent}${prefix}^${score} u/${c.author} | ${body}`;
-    return text.length > MAX_ITEM_CHARS ? text.substring(0, MAX_ITEM_CHARS - 1) + '…' : text;
-  }
+		const score = fmtScore(c.score);
+		const body = c.body.length > 40 ? c.body.substring(0, 37) + '…' : c.body;
+		const text = `${indent}${prefix}^${score} u/${c.author} | ${body}`;
+		return text.length > MAX_ITEM_CHARS ? text.substring(0, MAX_ITEM_CHARS - 1) + '…' : text;
+	}
 
-  /**
-   * Flatten comment tree based on expanded state
-   */
-  private flattenVisible(comments: RedditComment[]): RedditComment[] {
-    const result: RedditComment[] = [];
+	/**
+	 * Flatten comment tree based on expanded state
+	 */
+	private flattenVisible(comments: RedditComment[]): RedditComment[] {
+		const result: RedditComment[] = [];
 
-    for (const c of comments) {
-      result.push({
-        ...c,
-        collapsed: !this.expandedComments.has(c.id) && !!(c.replies?.length),
-      });
+		for (const c of comments) {
+			result.push({
+				...c,
+				collapsed: !this.expandedComments.has(c.id) && !!c.replies?.length,
+			});
 
-      if (this.expandedComments.has(c.id) && c.replies?.length) {
-        result.push(...this.flattenVisible(c.replies));
-      }
-    }
+			if (this.expandedComments.has(c.id) && c.replies?.length) {
+				result.push(...this.flattenVisible(c.replies));
+			}
+		}
 
-    return result;
-  }
+		return result;
+	}
 
-  /**
-   * Count all nested replies
-   */
-  private countAllReplies(comment: RedditComment): number {
-    if (!comment.replies?.length) return 0;
-    let count = comment.replies.length;
-    for (const r of comment.replies) {
-      count += this.countAllReplies(r);
-    }
-    return count;
-  }
+	/**
+	 * Count all nested replies
+	 */
+	private countAllReplies(comment: RedditComment): number {
+		if (!comment.replies?.length) return 0;
+		let count = comment.replies.length;
+		for (const r of comment.replies) {
+			count += this.countAllReplies(r);
+		}
+		return count;
+	}
 
-  /**
-   * Toggle comment expanded/collapsed
-   */
-  toggleComment(commentId: string): void {
-    if (this.expandedComments.has(commentId)) {
-      this.expandedComments.delete(commentId);
-    } else {
-      this.expandedComments.add(commentId);
-    }
-  }
+	/**
+	 * Toggle comment expanded/collapsed
+	 */
+	toggleComment(commentId: string): void {
+		if (this.expandedComments.has(commentId)) {
+			this.expandedComments.delete(commentId);
+		} else {
+			this.expandedComments.add(commentId);
+		}
+	}
 
-  isExpanded(commentId: string): boolean {
-    return this.expandedComments.has(commentId);
-  }
+	isExpanded(commentId: string): boolean {
+		return this.expandedComments.has(commentId);
+	}
 
-  /**
-   * Get comment at index (for event handling)
-   */
-  getCommentAt(index: number): RedditComment | null {
-    return this.visibleComments[index] ?? null;
-  }
+	/**
+	 * Get comment at index (for event handling)
+	 */
+	getCommentAt(index: number): RedditComment | null {
+		return this.visibleComments[index] ?? null;
+	}
 }
 
 function fmtScore(n: number): string {
-  if (!n || n <= 0) return '0';
-  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}k`;
-  return String(n);
+	if (!n || n <= 0) return '0';
+	if (n >= 1_000) return `${(n / 1_000).toFixed(0)}k`;
+	return String(n);
 }

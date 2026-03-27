@@ -269,7 +269,10 @@ function saveSettings() {
 	localStorage.setItem(AUTH_KEY, JSON.stringify(auth));
 	const rawCacheMins = parseInt(document.getElementById('input-cache')?.value, 10);
 	const cacheMins = isNaN(rawCacheMins) || rawCacheMins < 1 ? 5 : rawCacheMins;
-	const cfg = { feed: { endpoint: endpoint, subreddit: subreddit, limit: 25, time: 'day' }, cache: { durationMs: cacheMins * 60 * 1000 } };
+	const cfg = {
+		feed: { endpoint: endpoint, subreddit: subreddit, limit: 25, time: 'day' },
+		cache: { durationMs: cacheMins * 60 * 1000 },
+	};
 	localStorage.setItem(CONFIG_KEY, JSON.stringify(cfg));
 
 	Object.assign(globalThis.__appState, { hasAuth: !!token });
@@ -301,7 +304,7 @@ async function testAuth() {
 		return;
 	}
 
-	showToast('Testing auth...');
+	showToast('Testing auth…');
 
 	try {
 		const headers = {
@@ -326,7 +329,9 @@ async function testAuth() {
 function clearCache() {
 	if (!confirm('Clear in-memory cache and reload posts?')) return;
 	showToast('🧼 Reloading…');
-	setTimeout(function () { globalThis.location.reload(); }, 500);
+	setTimeout(function () {
+		globalThis.location.reload();
+	}, 500);
 }
 
 // ── Boot ─────────────────────────────────────────────────────────────────
