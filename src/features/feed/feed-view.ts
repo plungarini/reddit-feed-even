@@ -31,6 +31,8 @@ import { EvenAppBridge, RebuildPageContainer, TextContainerProperty } from '@eve
 import { CachedPost } from '../../core/types';
 
 export const POSTS_PER_PAGE = 4;
+/** containerID of the footer row; event_shield is FOOTER_CONTAINER_ID + 1 */
+export const FOOTER_CONTAINER_ID = POSTS_PER_PAGE + 1; // 5
 
 const POST_H = 64; // height of each post row (px);  4 × 64 = 256 px
 const WIDTH = 576;
@@ -48,13 +50,8 @@ export class FeedView {
 	}
 
 	/**
-	 * Render the full feed page.
-	 *
-	 * @param posts           All loaded posts
-	 * @param pageIndex       Current page (0-based)
-	 * @param highlightedIndex Which row is selected: 0-3 = post, 4 = footer
-	 * @param hasMore         Whether more posts can be fetched
-	 * @param loadingMore     Whether a load-more is in flight
+	 * Render the full feed page via rebuildPageContainer.
+	 * Requires createStartUpPageContainer to have been called first (via showStatus loading screen).
 	 */
 	async render(
 		posts: CachedPost[],
@@ -63,6 +60,27 @@ export class FeedView {
 		hasMore: boolean,
 		loadingMore: boolean,
 	): Promise<void> {
+		const containers = this.buildContainers(posts, pageIndex, highlightedIndex, hasMore, loadingMore);
+
+		const rebuildParam = new RebuildPageContainer({
+			containerTotalNum: containers.length,
+			textObject: containers,
+		});
+		console.log('[FeedView] rebuildPageContainer params:', JSON.stringify(rebuildParam, null, 2));
+
+		const ok = await this.bridge.rebuildPageContainer(rebuildParam);
+		if (!ok) {
+			throw new Error('rebuildPageContainer returned false (feed)');
+		}
+	}
+
+	private buildContainers(
+		posts: CachedPost[],
+		pageIndex: number,
+		highlightedIndex: number,
+		hasMore: boolean,
+		loadingMore: boolean,
+	): TextContainerProperty[] {
 		const startIdx = pageIndex * POSTS_PER_PAGE;
 		const pagePosts = posts.slice(startIdx, startIdx + POSTS_PER_PAGE);
 		const totalPages = Math.max(1, Math.ceil(posts.length / POSTS_PER_PAGE));
@@ -130,16 +148,11 @@ export class FeedView {
 		);
 
 		console.log(
-			`[FeedView] render page=${pageIndex}/${totalPages} hl=${highlightedIndex} ` +
+			`[FeedView] buildContainers page=${pageIndex}/${totalPages} hl=${highlightedIndex} ` +
 				`posts=${pagePosts.length} hasMore=${hasMore} loadingMore=${loadingMore}`,
 		);
 
-		await this.bridge.rebuildPageContainer(
-			new RebuildPageContainer({
-				containerTotalNum: POSTS_PER_PAGE + 2,
-				textObject: containers,
-			}),
-		);
+		return containers;
 	}
 }
 

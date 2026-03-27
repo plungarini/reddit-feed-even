@@ -29,13 +29,12 @@ import { PostStore } from './features/feed/post-store';
 import { PostCache } from './shared/storage/cache';
 import { StorageService } from './shared/storage/storage';
 
-/** Must match FeedView.POSTS_PER_PAGE */
 const CONFIG_KEY = 'reddit-client-config';
 const AUTH_KEY = 'reddit-client-auth';
 
 // ─── Globals ────────────────────────────────────────────────────────────────
 
-let pageCreated = false;
+let pageCreated = false; // set true after first createStartUpPageContainer call; never reset
 let isRendering = false;
 let renderQueued = false;
 
@@ -78,7 +77,9 @@ function statusParams(content: string) {
 async function showStatus(bridge: Bridge, content: string): Promise<void> {
 	if (!pageCreated) {
 		console.log('[SDK] createStartUpPageContainer...');
-		const result = await bridge.createStartUpPageContainer(new CreateStartUpPageContainer(statusParams(content)));
+		const startupParam = new CreateStartUpPageContainer(statusParams(content));
+		console.log('[SDK] createStartUpPageContainer params:', JSON.stringify(startupParam, null, 2));
+		const result = await bridge.createStartUpPageContainer(startupParam);
 		console.log(
 			'[SDK] createStartUpPageContainer result:',
 			result,
@@ -86,6 +87,13 @@ async function showStatus(bridge: Bridge, content: string): Promise<void> {
 		);
 		if (result === StartUpPageCreateResult.success) {
 			pageCreated = true;
+		} else {
+			// result=1 means the glasses already have a page from a prior session.
+			// Take ownership immediately by rebuilding the existing page.
+			console.log('[SDK] Page already exists — falling back to rebuildPageContainer...');
+			const ok = await bridge.rebuildPageContainer(new RebuildPageContainer(statusParams(content)));
+			console.log('[SDK] rebuildPageContainer (session takeover):', ok);
+			if (ok) pageCreated = true;
 		}
 	} else {
 		console.log('[SDK] rebuildPageContainer (status)...');
@@ -121,7 +129,8 @@ async function main() {
 	console.log('[RedditClient] hasAuth:', hasAuth);
 	debugState({ hasAuth });
 
-	// Loading screen
+	// Loading screen — establishes the page session via createStartUpPageContainer.
+	// All subsequent SDK calls (rebuildPageContainer) depend on this having been called first.
 	debugState({ status: 'loading' });
 	await showStatus(bridge, 'Reddit Client\n\nLoading feed...');
 
@@ -140,6 +149,8 @@ async function main() {
 			tokenV2: auth?.tokenV2 || '',
 			session: auth?.session || '',
 			userAgent: auth?.userAgent || DEFAULT_CONFIG.auth.userAgent,
+			// proxyUrl is saved into AUTH_KEY by debug-panel.js, not CONFIG_KEY
+			proxyUrl: auth?.proxyUrl || savedConfig.auth?.proxyUrl || '',
 		},
 		feed: {
 			...DEFAULT_CONFIG.feed,

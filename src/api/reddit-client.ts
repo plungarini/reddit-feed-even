@@ -67,7 +67,24 @@ export class RedditClient implements RedditClientInterface {
 			if (value !== undefined && value !== null) url.searchParams.set(key, value);
 		}
 
-		const response = await fetch(url.toString(), { headers: this.proxyHeaders() });
+		console.log('[RedditClient] GET', url.toString());
+
+		let response: Response;
+		try {
+			response = await fetch(url.toString(), {
+				headers: this.proxyHeaders(),
+				signal: AbortSignal.timeout(15_000),
+			});
+		} catch (err) {
+			const name = err instanceof Error ? err.name : '';
+			if (name === 'TimeoutError' || name === 'AbortError') {
+				throw new Error(`Request timed out (15s). Is the proxy server reachable? URL: ${url.toString()}`);
+			}
+			throw new Error(
+				`Network error: ${err instanceof Error ? err.message : String(err)} — URL: ${url.toString()}`,
+			);
+		}
+
 		this.rateLimiter.updateFromHeaders(response.headers);
 
 		if (!response.ok) {
