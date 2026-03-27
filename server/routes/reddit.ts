@@ -65,7 +65,7 @@ router.get('/test-auth', async (c) => {
 });
 
 // ─── Reddit API proxy ───────────────────
-router.all('/reddit/:proxyPath{.+}', async (c) => {
+router.all('/:proxyPath{.+}', async (c) => {
 	try {
 		const path = c.req.param('proxyPath');
 		const redditUrl = new URL(`https://www.reddit.com/${path}`);
