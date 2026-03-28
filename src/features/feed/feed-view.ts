@@ -1,5 +1,6 @@
 import { EvenAppBridge, RebuildPageContainer, TextContainerProperty } from '@evenrealities/even_hub_sdk';
 import { CachedPost } from '../../core/types';
+import { BORDER_RADIUS } from '../../shared/constants';
 import { fmtScore, normalizeWebText } from '../../shared/utils';
 
 export const POSTS_PER_PAGE = 4;
@@ -74,7 +75,7 @@ export class FeedView {
 					height: POST_H,
 					borderWidth: selected ? 1 : 0,
 					borderColor: selected ? 15 : 0,
-					borderRadius: selected ? 8 : 0,
+					borderRadius: selected ? BORDER_RADIUS - 2 : 0,
 					paddingLength: selected ? 4 : 5,
 					containerID: i + 1,
 					containerName: `post${i}`,

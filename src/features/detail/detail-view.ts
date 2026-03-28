@@ -23,6 +23,7 @@ import {
 	TextContainerUpgrade,
 } from '@evenrealities/even_hub_sdk';
 import { CachedPost } from '../../core/types';
+import { BORDER_RADIUS } from '../../shared/constants';
 import { capitalizeText, fmtScore, fmtTimeAgo, getStringChunks, normalizeWebText } from '../../shared/utils';
 
 const LINK_MAX_LINE_LEN = 52;
@@ -80,7 +81,7 @@ export class DetailView {
 			height: 288 - headerHeight,
 			borderWidth: 1,
 			borderColor: 5,
-			borderRadius: 10,
+			borderRadius: BORDER_RADIUS,
 			paddingLength: 10,
 			containerID: 2,
 			containerName: 'detail',

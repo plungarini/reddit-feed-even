@@ -6,6 +6,7 @@ import {
 } from '@evenrealities/even_hub_sdk';
 import { oneLine } from 'common-tags';
 import { RedditComment } from '../../core/types';
+import { BORDER_RADIUS } from '../../shared/constants';
 import { fmtScore, fmtTimeAgo, getStringChunks, normalizeWebText } from '../../shared/utils';
 
 // ─── Layout ───────────────────────────────────────────────────────────────────
@@ -225,7 +226,7 @@ export class CommentView {
 			height: BODY_H,
 			borderWidth: 1,
 			borderColor: 5,
-			borderRadius: 10,
+			borderRadius: BORDER_RADIUS,
 			paddingLength: 10,
 			containerID: 2,
 			containerName: 'cmt-body',
