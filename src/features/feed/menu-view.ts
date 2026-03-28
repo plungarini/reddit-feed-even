@@ -82,7 +82,7 @@ export class MenuView {
 			width: textWidth + 20,
 			height: HEADER_H,
 			borderWidth: 0,
-			paddingLength: 4,
+			paddingLength: 5,
 			containerID: 1,
 			containerName: 'menu-header',
 			isEventCapture: 0,
@@ -93,7 +93,7 @@ export class MenuView {
 	private buildList(currentEndpoint: FeedEndpoint): ListContainerProperty {
 		const itemNames = FEED_ITEMS.map((item) => {
 			const active = item.id === currentEndpoint;
-			const indicator = active ? '●  ' : '○  ';
+			const indicator = active ? '>  ' : '   ';
 			return `${indicator}${item.label}  —  ${item.desc}`;
 		});
 

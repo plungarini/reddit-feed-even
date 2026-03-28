@@ -1,13 +1,3 @@
-/**
- * Reddit Client for Even Realities G2
- *
- * Architecture:
- *   - FeedView: ListContainerProperty with native selection highlighting
- *   - DetailView: TextContainerProperty with scrollable content
- *   - CommentView: ListContainerProperty with toggleable tree
- *   - Navigation: Stack-based with context preservation
- */
-
 import {
 	CreateStartUpPageContainer,
 	OsEventTypeList,
@@ -27,9 +17,12 @@ import { DetailView } from './features/detail/detail-view';
 import { FeedView } from './features/feed/feed-view';
 import { FEED_ITEMS, MenuView } from './features/feed/menu-view';
 import { PostStore } from './features/feed/post-store';
+import { getStringChunks } from './shared/utils';
 
 const CONFIG_KEY = 'reddit-client-config';
 const AUTH_KEY = 'reddit-client-auth';
+
+const LOAD_ANIM_MS = 300;
 
 // ─── Globals ────────────────────────────────────────────────────────────────
 
@@ -39,6 +32,12 @@ let renderQueued = false;
 
 // Transient active endpoint — NOT persisted; resets to config default on reload
 let activeEndpoint: import('./core/types').FeedEndpoint = 'hot';
+
+// ─── Loading animation state ─────────────────────────────────────────────────
+let animDots = 3;
+let loadAnimInterval: ReturnType<typeof setInterval> | null = null;
+let animTickFn: (() => void) | null = null; // set in main() once views are ready
+let menuSelecting = false; // guard against spurious menu rebuilds after selection
 
 type Bridge = Awaited<ReturnType<typeof waitForEvenAppBridge>>;
 
@@ -54,64 +53,81 @@ main().catch((err) => {
 	console.error('[RedditClient] Fatal error:', err);
 });
 
-// ─── Status screen helpers ───────────────────────────────────────────────────
+/** Approximate px per text line and padding for status containers */
+const STATUS_LINE_H = 32;
+const STATUS_PAD = 6;
+const STATUS_DASHES = 28; // box char-width (fits in 576px; no px math needed)
+
+/**
+ * Builds a visual box:
+ *   ╭─  Title  ─────────────────────────────────╮
+ *   │
+ *   │ content line 1
+ *   │ content line 2
+ *   │
+ *   ╰───────────────────────────────────────────╯
+ */
+function buildStatusBox(title: string, content: string): string {
+	const titleSection = `─     ${title}     `;
+	const dashCount = Math.max(0, STATUS_DASHES - title.length);
+	const top = `╭${titleSection}${'─'.repeat(dashCount)}╮`;
+	const bodyLines = getStringChunks(content, 55).map((l) => `│    ${l}`);
+	const bottom = `╰${'─'.repeat(STATUS_DASHES / 2)}`;
+	return [top, '│', ...bodyLines, '│', bottom].join('\n');
+}
 
 function statusParams(content: string, isError = false) {
-	const errorHeader = `╭────────  ERROR  ────────╮`;
-	const normContent = isError ? `${errorHeader}\n\n${content}` : `╭──  ${content}  ──╮`;
+	isError = isError || content.toLowerCase().includes('error');
 
-	const contentWidth = isError ? 470 : normContent.length * 11;
-	const x = Math.floor((576 - contentWidth) / 2);
+	const title = isError ? 'Fatal Error' : 'Reddit Feed';
+	const box = buildStatusBox(title, content);
+
+	const lineCount = box.split('\n').length;
+	const h = Math.min(250, lineCount * STATUS_LINE_H + STATUS_PAD * 2);
+	const y = Math.max(0, Math.floor((288 - h) / 2));
+
 	return {
 		containerTotalNum: 1,
 		textObject: [
 			new TextContainerProperty({
-				xPosition: x,
-				yPosition: 0,
-				width: contentWidth + (isError ? 0 : 50),
-				height: 288,
+				xPosition: 0,
+				yPosition: y,
+				width: 576,
+				height: h,
 				borderWidth: 0,
-				paddingLength: 12,
+				paddingLength: STATUS_PAD,
 				containerID: 1,
 				containerName: 'main',
 				isEventCapture: 0,
-				content: normContent,
+				content: box,
 			}),
 		],
 	};
 }
 
 async function showStatus(bridge: Bridge, content: string, isError = false): Promise<void> {
+	const params = statusParams(content, isError);
 	if (!pageCreated) {
 		console.log('[SDK] createStartUpPageContainer…');
-		const startupParam = new CreateStartUpPageContainer(statusParams(content, isError));
-		const result = await bridge.createStartUpPageContainer(startupParam);
-		console.log(
-			'[SDK] createStartUpPageContainer result:',
-			result,
-			result === StartUpPageCreateResult.success ? '(success)' : '(FAILED)',
-		);
+		const result = await bridge.createStartUpPageContainer(new CreateStartUpPageContainer(params));
+		console.log('[SDK] createStartUpPageContainer result:', result);
 		if (result === StartUpPageCreateResult.success) {
 			pageCreated = true;
 		} else {
-			// result=1 means the glasses already have a page from a prior session.
-			// Take ownership immediately by rebuilding the existing page.
-			console.log('[SDK] Page already exists — falling back to rebuildPageContainer…');
+			// Session takeover
 			try {
-				const ok = await bridge.rebuildPageContainer(new RebuildPageContainer(statusParams(content, isError)));
-				console.log('[SDK] rebuildPageContainer (session takeover):', ok);
+				const ok = await bridge.rebuildPageContainer(new RebuildPageContainer(params));
 				if (ok) pageCreated = true;
-			} catch (error) {
-				console.error('[SDK] rebuildPageContainer (session takeover) failed:', error);
+			} catch (e) {
+				console.error('[SDK] Session takeover failed:', e);
 			}
 		}
 	} else {
-		console.log('[SDK] rebuildPageContainer (status)…');
+		// Use rebuildPageContainer for status box updates for maximum reliability
 		try {
-			const ok = await bridge.rebuildPageContainer(new RebuildPageContainer(statusParams(content, isError)));
-			console.log('[SDK] rebuildPageContainer (status):', ok);
+			await bridge.rebuildPageContainer(new RebuildPageContainer(params));
 		} catch (error) {
-			console.error('[SDK] rebuildPageContainer (status) failed:', error);
+			console.error('[SDK] showStatus rebuild failed:', error);
 		}
 	}
 }
@@ -122,7 +138,6 @@ async function main() {
 	console.log('[RedditClient] Starting…');
 	debugState({ status: 'starting', bridgeReady: false });
 
-	// Bridge must come first
 	let bridge: Bridge;
 	try {
 		bridge = await waitForEvenAppBridge();
@@ -157,17 +172,35 @@ async function main() {
 	// Loading screen — establishes the page session via createStartUpPageContainer.
 	// All subsequent SDK calls (rebuildPageContainer) depend on this having been called first.
 	debugState({ status: 'loading' });
-	await showStatus(bridge, 'Loading your feed…');
-
 	// Cache duration: read from config, min 60s
 	const cacheDurationMs = Math.max(60_000, config.cache.durationMs);
 	console.log(`[RedditClient] Cache duration: ${cacheDurationMs / 1000}s`);
 
+	// Core managers
 	const authManager = new AuthManager(config.auth);
 	const rateLimiter = new RateLimiter();
 	const redditClient = new RedditClient(authManager, rateLimiter);
 	const postStore = new PostStore(redditClient, cacheDurationMs);
 	const uiManager = new UIManager();
+
+	// Views
+	const feedView = new FeedView(bridge);
+	const detailView = new DetailView(bridge, config.auth.proxyUrl);
+	const commentView = new CommentView(bridge);
+	const menuView = new MenuView(bridge);
+
+	// Wire the animation tick to the render schedule now that all views exist
+	animTickFn = () => scheduleRender(bridge, postStore, uiManager, feedView, detailView, commentView, menuView);
+
+	// Seed the active endpoint from the loaded config
+	activeEndpoint = config.feed.endpoint;
+
+	// Loading screen — establishes the page session via createStartUpPageContainer.
+	// All subsequent SDK calls (rebuildPageContainer) depend on this having been called first.
+	debugState({ status: 'loading' });
+	await showStatus(bridge, 'Loading your feed...');
+
+	startLoadAnim();
 
 	// Reddit client init
 	try {
@@ -176,15 +209,6 @@ async function main() {
 	} catch (e) {
 		console.warn('[RedditClient] Reddit init warning:', e);
 	}
-
-	// Views
-	const feedView = new FeedView(bridge);
-	const detailView = new DetailView(bridge, config.auth.proxyUrl);
-	const commentView = new CommentView(bridge);
-	const menuView = new MenuView(bridge);
-
-	// Seed the active endpoint from the loaded config
-	activeEndpoint = config.feed.endpoint;
 
 	// ─── Event handler ────────────────────────────────────────────────────────
 
@@ -217,7 +241,7 @@ async function main() {
 		} else if (view === 'detail') {
 			handleDetailEvent(type, postStore, uiManager, commentView);
 		} else if (view === 'comments') {
-			handleCommentsEvent(type, listEvent, postStore, uiManager, commentView);
+			handleCommentsEvent(type, postStore, uiManager, commentView);
 		} else if (view === 'menu') {
 			handleMenuEvent(type, listEvent, postStore, uiManager);
 		}
@@ -226,11 +250,14 @@ async function main() {
 	// ─── Subscriptions ────────────────────────────────────────────────────────
 
 	postStore.subscribe(() => {
+		const { loading, loadingMore, commentsLoading } = postStore.getState();
+
+		if (!loading && !loadingMore && !commentsLoading) stopLoadAnim();
+
 		scheduleRender(bridge, postStore, uiManager, feedView, detailView, commentView, menuView);
 	});
 
 	uiManager.subscribe(() => {
-		// Reset comment view when navigating away
 		const view = uiManager.getCurrentView();
 		if (view !== 'comments') commentView.reset();
 
@@ -272,6 +299,7 @@ function handleFeedEvent(type: OsEventTypeList | undefined, postStore: PostStore
 			postStore.setHighlight(next);
 		} else if (state.hasMore) {
 			// At last post and scroll down -> next page
+			startLoadAnim();
 			postStore.nextPage().catch(console.error);
 		}
 	} else if (type === OsEventTypeList.SCROLL_TOP_EVENT) {
@@ -301,9 +329,9 @@ function handleFeedEvent(type: OsEventTypeList | undefined, postStore: PostStore
 		const currentEntry = uiManager.getCurrentEntry();
 		uiManager.pushView({
 			view: 'menu',
-			pageIndex:      currentEntry.pageIndex,
+			pageIndex: currentEntry.pageIndex,
 			highlightIndex: currentEntry.highlightIndex,
-			menuSelectedIndex: FEED_ITEMS.findIndex((item) => item.id === activeEndpoint),
+			menuSelectedIndex: 0, // Hardware highlight always starts at 0 (Hot)
 		});
 	}
 }
@@ -335,10 +363,11 @@ function handleMenuEvent(
 		const idx = listEvent?.currentSelectItemIndex ?? currentIdx;
 		const item = FEED_ITEMS[idx];
 		if (item) {
-			console.log(`[Menu] Selected endpoint: ${item.id}`);
 			activeEndpoint = item.id;
+			menuSelecting = true;
+			postStore.loadFeedByEndpoint(item.id).catch(() => {});
+			startLoadAnim();
 			uiManager.goBack();
-			postStore.loadFeedByEndpoint(item.id).catch(console.error);
 		}
 	} else if (type === OsEventTypeList.DOUBLE_CLICK_EVENT) {
 		console.log('[Menu] Exiting without change');
@@ -366,6 +395,8 @@ function handleDetailEvent(
 		if (post) {
 			console.log(`[Detail] Opening comments for: ${post.id}`);
 			commentView.reset();
+			commentView.setContext(post.subreddit, post.title);
+			startLoadAnim();
 			postStore.loadComments().catch(console.error);
 			uiManager.pushView({ view: 'comments', postId: post.id });
 		}
@@ -378,49 +409,50 @@ function handleDetailEvent(
 }
 
 /**
- * Handle comments view events with ListContainerProperty
- *
- * List container sends listEvent with currentSelectItemIndex.
- * - listEvent: track which comment is selected
- * - CLICK: toggle expand/collapse
- * - DOUBLE_CLICK: back to detail
+ * Handle comments view events.
+ * All double-scroll logic lives in CommentView; this function just delegates.
  */
 function handleCommentsEvent(
 	type: OsEventTypeList | undefined,
-	listEvent: { currentSelectItemIndex?: number; currentSelectItemName?: string } | undefined,
 	postStore: PostStore,
 	uiManager: UIManager,
 	commentView: CommentView,
 ): void {
-	// Track selection from list event
-	if (listEvent) {
-		const index = listEvent.currentSelectItemIndex;
-		const name = listEvent.currentSelectItemName;
-
-		// Check if "Load more" item
-		if (name?.includes('Load more') && type === OsEventTypeList.CLICK_EVENT) {
-			const state = postStore.getState();
-			if (state.hasMoreComments && !state.commentsLoading) {
-				postStore.loadMoreComments().catch(console.error);
-			}
-			return;
-		}
-
-		// Single tap on comment = toggle expand
-		if ((type === OsEventTypeList.CLICK_EVENT || type === undefined) && index !== undefined) {
-			const comment = commentView.getCommentAt(index);
-			if (comment) {
-				console.log(`[Comments] Toggling comment ${comment.id}`);
-				postStore.toggleComment(comment.id);
-			}
-		}
-	}
-
-	if (type === OsEventTypeList.DOUBLE_CLICK_EVENT) {
-		// Double tap = back to detail (NOT feed!)
+	const { comments, hasMoreComments, commentsLoading } = postStore.getState();
+	if (type === OsEventTypeList.SCROLL_BOTTOM_EVENT) {
+		commentView.onScrollDown(comments, hasMoreComments, commentsLoading, () =>
+			postStore.loadMoreComments().catch(console.error),
+		);
+	} else if (type === OsEventTypeList.SCROLL_TOP_EVENT) {
+		commentView.onScrollUp(comments, hasMoreComments, commentsLoading);
+	} else if (type === OsEventTypeList.DOUBLE_CLICK_EVENT) {
 		console.log('[Comments] Going back to detail');
+		commentView.reset();
 		uiManager.goBack();
 	}
+}
+
+// ─── Loading animation helpers ──────────────────────────────────────────────
+
+/** Start a 500ms tick that increments animDots and calls animTickFn. Re-entrant: no-ops if already running. */
+function startLoadAnim(): void {
+	if (loadAnimInterval) return;
+	console.log(`[LoadAnim] startLoadAnim called, speed=${LOAD_ANIM_MS}ms`);
+	animDots = 3;
+	loadAnimInterval = setInterval(() => {
+		animDots = (animDots + 1) % 4;
+		console.log(`[LoadAnim] dots=${animDots}`);
+		animTickFn?.();
+	}, LOAD_ANIM_MS);
+}
+
+/** Stop the loading animation and reset the dots counter. */
+function stopLoadAnim(): void {
+	if (loadAnimInterval) {
+		clearInterval(loadAnimInterval);
+		loadAnimInterval = null;
+	}
+	animDots = 3;
 }
 
 // ─── Render System ──────────────────────────────────────────────────────────
@@ -474,6 +506,7 @@ async function render(
 	const entry = uiManager.getCurrentEntry();
 	const view = entry.view;
 	const state = postStore.getState();
+	if (view !== 'menu') menuSelecting = false;
 
 	console.log(`[Render] view=${view} page=${state.currentPage} highlight=${state.highlightedIndex}`);
 	debugState({
@@ -488,11 +521,11 @@ async function render(
 		switch (view) {
 			case 'feed':
 				if (state.error && state.posts.length === 0) {
-					await showStatus(bridge, `Error: ${state.error}`);
+					await showStatus(bridge, `Error: ${state.error}`, true);
 					return;
 				}
-				if (state.loading && state.posts.length === 0) {
-					console.log('[Render] Waiting for initial posts…');
+				if (state.posts.length === 0 && !state.error || state.loading) {
+					await showStatus(bridge, `Loading your feed${'.'.repeat(animDots)}`);
 					return;
 				}
 				await feedView.render(
@@ -501,6 +534,7 @@ async function render(
 					state.highlightedIndex ?? 0,
 					state.hasMore,
 					state.loadingMore,
+					animDots,
 				);
 				break;
 
@@ -516,10 +550,12 @@ async function render(
 			}
 
 			case 'comments':
-				await commentView.render(state.comments, state.hasMoreComments, state.commentsLoading);
+				await commentView.render(state.comments, state.hasMoreComments, state.commentsLoading, animDots);
 				break;
 
 			case 'menu':
+				if (menuSelecting) break; // skip rebuild — we're transitioning away
+				menuSelecting = false;
 				await menuView.render(activeEndpoint);
 				break;
 		}

@@ -6,6 +6,13 @@ const ENV = env as Record<string, string>;
 const LINKPREVIEW_API_KEY = ENV.LINKPREVIEW_API_KEY;
 const PEEKALINK_API_KEY = ENV.PEEKALINK_API_KEY;
 
+class PeekalinkRedirectLoopError extends Error {
+	constructor(url: string) {
+		super(`Peekalink: link redirects to itself (${url})`);
+		this.name = 'PeekalinkRedirectLoopError';
+	}
+}
+
 function getOembedUrl(url: string): string | null {
 	try {
 		const host = new URL(url).hostname.replace('www.', '');
@@ -74,9 +81,17 @@ async function fetchViaPeekalink(url: string): Promise<PreviewData | null> {
 			body: JSON.stringify({ link: url }),
 			signal: AbortSignal.timeout(15_000),
 		});
-		if (!res.ok) throw new Error(`Error: ${res.status} | ${res.statusText}`);
+		const data = await res.json<{
+			title?: string;
+			description?: string;
+			image?: { thumbnail: { url?: string } };
+			error?: string;
+		}>();
 
-		const data = await res.json<{ title?: string; description?: string; image?: { thumbnail: { url?: string } } }>();
+		if (!res.ok) {
+			if (data?.error === 'LINK_REDIRECTS_TO_ITSELF') throw new PeekalinkRedirectLoopError(url);
+			throw new Error(`Error: ${res.status} | ${res.statusText}`);
+		}
 
 		console.log('[PREVIEW] Fetch via peekalink', { title: data?.title, description: data?.description });
 

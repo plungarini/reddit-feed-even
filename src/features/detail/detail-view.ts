@@ -23,9 +23,10 @@ import {
 	TextContainerUpgrade,
 } from '@evenrealities/even_hub_sdk';
 import { CachedPost } from '../../core/types';
-import { capitalizeText, normalizeWebText } from '../../shared/utils';
+import { capitalizeText, fmtScore, fmtTimeAgo, getStringChunks, normalizeWebText } from '../../shared/utils';
 
-const MAX_CHARS = 1000; // SDK limit for rebuild
+const LINK_MAX_LINE_LEN = 52;
+const LINK_MAX_DESC_LEN = 200;
 
 export class DetailView {
 	private readonly bridge: EvenAppBridge;
@@ -55,7 +56,7 @@ export class DetailView {
 		this.lastPostId = post.id;
 
 		const score = fmtScore(post.score);
-		const comments = fmtNum(post.numComments);
+		const comments = fmtScore(post.numComments);
 		const headerHeight = 38;
 		const header = new TextContainerProperty({
 			xPosition: 0,
@@ -63,10 +64,10 @@ export class DetailView {
 			width: 576,
 			height: headerHeight,
 			containerID: 1,
-			paddingLength: 4,
+			paddingLength: 5,
 			containerName: 'header',
 			isEventCapture: 0,
-			content: `  r/${post.subreddit}  [ ${score}↑  ${comments}c ]`,
+			content: ` r/${post.subreddit}  [ ${score} ↑  ${comments} c ]`,
 		});
 
 		const content = await this.buildContent(post, 'create');
@@ -80,7 +81,7 @@ export class DetailView {
 			borderWidth: 1,
 			borderColor: 5,
 			borderRadius: 10,
-			paddingLength: 12,
+			paddingLength: 10,
 			containerID: 2,
 			containerName: 'detail',
 			isEventCapture: 1,
@@ -160,7 +161,7 @@ export class DetailView {
 		}
 
 		const attachmentContent = attachmentLines.join('\n');
-		const footerContent = `\nu/${post.author} • ${timeAgo(post.createdUtc)}`;
+		const footerContent = `\nu/${post.author} • ${fmtTimeAgo(post.createdUtc)}`;
 		totalChars += attachmentContent.length + footerContent.length;
 
 		if (post.selftext) {
@@ -178,83 +179,29 @@ export class DetailView {
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
-function fmtScore(n: number): string {
-	if (!n || n <= 0) return '0';
-	if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}m`;
-	if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-	return String(n);
-}
-
-function fmtNum(n: number): string {
-	if (!n || n <= 0) return '0';
-	if (n >= 1_000) return `${(n / 1_000).toFixed(0)}k`;
-	return String(n);
-}
-
-function timeAgo(createdUtc: number): string {
-	if (!createdUtc) return 'unknown';
-	const secs = Math.floor(Date.now() / 1000) - createdUtc;
-	if (secs < 60) return 'now';
-	if (secs < 3600) return `${Math.floor(secs / 60)}m`;
-	if (secs < 86400) return `${Math.floor(secs / 3600)}h`;
-	if (secs < 604800) return `${Math.floor(secs / 86400)}d`;
-	return `${Math.floor(secs / 604800)}w`;
-}
-
 async function buildLinkPreview(url: string, proxyUrl: string): Promise<string[]> {
-	const MAX_LINE_LEN = 52;
-	const MAX_DESC_LEN = 200;
-
 	const lines: string[] = [];
 	const { domain, title, description } = await extractLink(url, proxyUrl);
 	let contentLabel = `╭─────────────────────────╮\n│    Link to ${domain}\n╰─────────────────────────╯`;
 
 	if (title) {
-		const titleParts = getStringChunks(title, MAX_LINE_LEN).map((t) => `│ ${t}`);
+		const titleParts = getStringChunks(title, LINK_MAX_LINE_LEN).map((t) => `│ ${t}`);
 
 		lines.push(`╭─────────────────────────╮`, ...titleParts);
 		contentLabel = `│\n╰  ${domain} ╯`;
 	}
 	if (description) {
 		const normDescription =
-			description.length > MAX_DESC_LEN ? description.trim().substring(0, MAX_DESC_LEN - 3) + '…' : description.trim();
-		const descriptionChunks = getStringChunks(normDescription, MAX_LINE_LEN).map(
+			description.length > LINK_MAX_DESC_LEN
+				? description.trim().substring(0, LINK_MAX_DESC_LEN - 3) + '…'
+				: description.trim();
+		const descriptionChunks = getStringChunks(normDescription, LINK_MAX_LINE_LEN).map(
 			(d, i) => `│ ${i === 0 ? '> ' : ''}${d}`,
 		);
 		lines.push('│', ...descriptionChunks);
 	}
 
 	lines.push(contentLabel);
-	return lines;
-}
-
-function getStringChunks(text: string, maxLength: number): string[] {
-	if (!text) {
-		return [];
-	}
-
-	const words = text.split(' ');
-	const lines = [];
-	let currentLine = '';
-
-	for (const word of words) {
-		if ((currentLine + word).length > maxLength) {
-			if (currentLine === '') {
-				lines.push(word.substring(0, maxLength));
-				currentLine = word.substring(maxLength) + ' ';
-			} else {
-				lines.push(currentLine.trim());
-				currentLine = word + ' ';
-			}
-		} else {
-			currentLine += word + ' ';
-		}
-	}
-
-	if (currentLine.trim()) {
-		lines.push(currentLine.trim());
-	}
-
 	return lines;
 }
 
@@ -266,7 +213,7 @@ async function extractLink(
 	try {
 		const previewUrl = `${proxyUrl}/preview?url=${encodeURIComponent(url)}`;
 		console.log(`[DetailView] Fetching preview: ${previewUrl}`);
-		const response = await fetch(previewUrl /* , { signal: AbortSignal.timeout(10000) } */);
+		const response = await fetch(previewUrl, { signal: AbortSignal.timeout(60000) });
 		if (response.ok) {
 			const data = await response.json<{
 				title?: string;

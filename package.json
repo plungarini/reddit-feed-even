@@ -2,6 +2,7 @@
 	"author": "Pietro Lungarini",
 	"dependencies": {
 		"@evenrealities/even_hub_sdk": "^0.0.9",
+		"common-tags": "^1.8.2",
 		"hono": "^4.12.9"
 	},
 	"description": "A full-featured Reddit client for Even Realities G2 smart glasses",
@@ -9,6 +10,7 @@
 		"@cloudflare/workers-types": "^4.20260317.1",
 		"@evenrealities/evenhub-cli": "^0.1.10",
 		"@evenrealities/evenhub-simulator": "^0.6.2",
+		"@types/common-tags": "^1.8.4",
 		"@types/node": "^25.5.0",
 		"concurrently": "^9.1.2",
 		"tsx": "^4.19.3",
