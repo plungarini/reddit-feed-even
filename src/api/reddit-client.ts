@@ -80,9 +80,7 @@ export class RedditClient implements RedditClientInterface {
 			if (name === 'TimeoutError' || name === 'AbortError') {
 				throw new Error(`Request timed out (15s). Is the proxy server reachable? URL: ${url.toString()}`);
 			}
-			throw new Error(
-				`Network error: ${err instanceof Error ? err.message : String(err)} — URL: ${url.toString()}`,
-			);
+			throw new Error(`Network error: ${err instanceof Error ? err.message : String(err)} — URL: ${url.toString()}`);
 		}
 
 		this.rateLimiter.updateFromHeaders(response.headers);
@@ -140,10 +138,10 @@ export class RedditClient implements RedditClientInterface {
 	// Comments
 	// ========================================================================
 
-	async fetchComments(postId: string, limit: number = 12): Promise<RedditComment[]> {
+	async fetchComments(postId: string, limit: number = 100): Promise<RedditComment[]> {
 		const response = await this.get<[unknown, RedditListing<any>]>(`/comments/${postId}.json`, {
 			limit: String(limit),
-			depth: '2',
+			depth: '1',
 			sort: 'top',
 		});
 		return this.flattenComments(response[1].data.children, 2);

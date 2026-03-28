@@ -51,7 +51,7 @@ export function normalizeWebText(text: string): string {
 			// Typography: replace common Unicode punctuation with ASCII equivalents
 			.replaceAll(/[\u2018\u2019]/g, "'") // curly single quotes -> '
 			.replaceAll(/[\u201C\u201D]/g, '"') // curly double quotes -> "
-			.replaceAll('\u2026', '…') // ellipsis -> ...
+			.replaceAll('\u2026', '… ') // ellipsis -> ...
 			.replaceAll(/[\u2013\u2014]/g, '-') // en/em dash -> -
 			.replaceAll('\u00B7', '.') // middle dot -> .
 			.replaceAll('\u2022', '-') // bullet -> -
@@ -74,4 +74,63 @@ export function normalizeWebText(text: string): string {
 export function capitalizeText(text: string): string {
 	const parts = text.split(' ');
 	return parts.map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
+}
+
+export function getStringChunks(text: string, maxLength: number): string[] {
+	if (!text) {
+		return [];
+	}
+
+	const words = text.split(' ');
+	const lines: string[] = [];
+	let currentLine = '';
+
+	for (const word of words) {
+		// Force-split any word that is itself longer than maxLength
+		if (word.length > maxLength) {
+			if (currentLine.trim()) {
+				lines.push(currentLine.trim());
+				currentLine = '';
+			}
+			let remaining = word;
+			while (remaining.length > maxLength) {
+				lines.push(remaining.substring(0, maxLength));
+				remaining = remaining.substring(maxLength);
+			}
+			currentLine = remaining + ' ';
+			continue;
+		}
+
+		if ((currentLine + word).length > maxLength) {
+			lines.push(currentLine.trim());
+			currentLine = word + ' ';
+		} else {
+			currentLine += word + ' ';
+		}
+	}
+
+	if (currentLine.trim()) {
+		lines.push(currentLine.trim());
+	}
+
+	return lines;
+}
+
+export function fmtScore(n: number): string {
+	if (!n || n <= 0) return '0';
+	if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}m`;
+	if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+	return String(n);
+}
+
+export function fmtTimeAgo(createdUtc: number): string {
+	if (!createdUtc) return 'unknown';
+	const secs = Math.floor(Date.now() / 1000) - createdUtc;
+	if (secs < 60) return 'now';
+	if (secs < 3600) return `${Math.floor(secs / 60)}m`;
+	if (secs < 86400) return `${Math.floor(secs / 3600)}h`;
+	if (secs < 604800) return `${Math.floor(secs / 86400)}d`;
+	if (secs < 2592000) return `${Math.floor(secs / 604800)}w`;
+	if (secs < 31536000) return `${Math.floor(secs / 2592000)}mo`;
+	return `${Math.floor(secs / 31536000)}y`;
 }
