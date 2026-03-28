@@ -91,12 +91,14 @@ router.all('/:proxyPath{.+}', async (c) => {
 		}
 
 		console.log(`[Proxy] → ${redditUrl} ${token ? '(with auth)' : '(no auth)'}`);
+
 		const response = await fetch(redditUrl.toString(), {
 			headers,
 			redirect: 'follow',
 		});
 
 		if (!response.ok) {
+			console.error(`[Proxy] Reddit API error: ${response.status}`);
 			return c.json(
 				{
 					error: `Reddit API error: ${response.status}`,

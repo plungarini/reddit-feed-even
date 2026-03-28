@@ -5,29 +5,25 @@
  * which sets Cookie headers server-side — the browser Fetch API cannot.
  */
 
-import { FeedConfig, RedditClientInterface, RedditComment, RedditListing, RedditPost } from '../core/types';
+import { ApiConfig, FeedConfig, RedditClientInterface, RedditComment, RedditListing, RedditPost } from '../core/types';
 import { AuthManager } from './auth-manager';
 import { RateLimiter } from './rate-limiter';
 
 export class RedditClient implements RedditClientInterface {
 	private readonly auth: AuthManager;
 	private readonly rateLimiter: RateLimiter;
+	private readonly apiConfig: ApiConfig;
 
 	/** Proxy base URL — auto-detects LAN IP or uses configured remote Worker. */
 	private get baseUrl(): string {
-		const config = this.auth.getConfig();
-		if (config.proxyUrl) {
-			// Ensure it ends with /api/reddit
-			const base = config.proxyUrl.endsWith('/') ? config.proxyUrl.slice(0, -1) : config.proxyUrl;
-			return `${base}/api/reddit`;
-		}
-		const host = globalThis?.location?.hostname || 'localhost';
-		return `http://${host}:3001/api/reddit`;
+		const base = this.apiConfig.baseUrl.endsWith('/') ? this.apiConfig.baseUrl.slice(0, -1) : this.apiConfig.baseUrl;
+		return `${base}/api/reddit`;
 	}
 
-	constructor(auth: AuthManager, rateLimiter: RateLimiter) {
+	constructor(auth: AuthManager, rateLimiter: RateLimiter, apiConfig: ApiConfig) {
 		this.auth = auth;
 		this.rateLimiter = rateLimiter;
+		this.apiConfig = apiConfig;
 	}
 
 	async initialize(): Promise<void> {

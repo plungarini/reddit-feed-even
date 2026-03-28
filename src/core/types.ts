@@ -86,6 +86,7 @@ export interface AppConfig {
   auth: AuthConfig;
   feed: FeedConfig;
   cache: CacheConfig;
+  api: ApiConfig;
 }
 
 export interface AuthConfig {
@@ -98,6 +99,10 @@ export interface AuthConfig {
 
 export interface CacheConfig {
   durationMs: number;
+}
+
+export interface ApiConfig {
+  baseUrl: string;
 }
 
 

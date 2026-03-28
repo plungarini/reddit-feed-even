@@ -34,11 +34,9 @@ export class DetailView {
 	private readonly proxyUrl: string;
 	private lastPostId: string | null = null;
 
-	constructor(bridge: EvenAppBridge, proxyUrl?: string) {
+	constructor(bridge: EvenAppBridge, proxyUrl: string) {
 		this.bridge = bridge;
-		const host = globalThis?.location?.hostname || 'localhost';
-		const defaultProxy = `http://${host}:3001/api`;
-		this.proxyUrl = proxyUrl ? (proxyUrl.endsWith('/') ? proxyUrl.slice(0, -1) : proxyUrl) : defaultProxy;
+		this.proxyUrl = proxyUrl.endsWith('/') ? proxyUrl.slice(0, -1) : proxyUrl;
 		if (this.proxyUrl && !this.proxyUrl.endsWith('/api')) {
 			this.proxyUrl = `${this.proxyUrl}/api`;
 		}

@@ -4,7 +4,7 @@
  * Highly customizable settings for Reddit endpoints, caching, and UI behavior.
  */
 
-import { AppConfig, AuthConfig, FeedConfig, CacheConfig } from './types';
+import { AppConfig, AuthConfig, FeedConfig, CacheConfig, ApiConfig } from './types';
 
 export const DEFAULT_AUTH: AuthConfig = {
   type: 'cookie',
@@ -12,6 +12,10 @@ export const DEFAULT_AUTH: AuthConfig = {
   session: '',
   userAgent: 'reddit-client-even/1.0 (Even G2 smart glasses; contact@example.com)',
   proxyUrl: '',
+};
+
+export const DEFAULT_API: ApiConfig = {
+  baseUrl: 'https://reddit-client-even.plungarini.workers.dev',
 };
 
 export const DEFAULT_FEED: FeedConfig = {
@@ -32,6 +36,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   auth: DEFAULT_AUTH,
   feed: DEFAULT_FEED,
   cache: DEFAULT_CACHE,
+  api: DEFAULT_API,
 };
 
 // ============================================================================
@@ -176,5 +181,6 @@ export function mergeConfig(existing: AppConfig, updates: Partial<AppConfig>): A
     auth: { ...existing.auth, ...updates.auth },
     feed: { ...existing.feed, ...updates.feed },
     cache: { ...existing.cache, ...updates.cache },
+    api: { ...existing.api, ...updates.api },
   };
 }
