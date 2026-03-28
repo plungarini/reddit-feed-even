@@ -40,7 +40,7 @@ export class PostStore {
 		currentPage: 0,
 		postsPerPage: 4,
 		highlightedIndex: 0,
-		loading: false,
+		loading: true,
 		loadingMore: false,
 		hasMore: true,
 		error: null,
@@ -168,11 +168,10 @@ export class PostStore {
 	 * Load feed with a different endpoint (transient — does not persist to config).
 	 * Always force-fetches fresh posts, bypassing the in-memory cache.
 	 */
-	async loadFeedByEndpoint(endpoint: FeedConfig['endpoint']): Promise<void> {
-		const base = this.currentFeed ?? { endpoint, limit: 25, time: 'day' as const };
-		await this.loadFeed({ ...base, endpoint }, true);
+	async loadFeedByEndpoint(endpoint: import('../../core/types').FeedEndpoint): Promise<void> {
+		// New endpoint selection from menu should start fresh (no old subreddit/sort/time)
+		await this.loadFeed({ endpoint, limit: 25 }, true);
 	}
-
 
 	// ========================================================================
 	// Page Navigation
@@ -275,8 +274,8 @@ export class PostStore {
 		this.notify();
 
 		try {
-			const comments = await this.client.fetchComments(post.id, 10);
-			this.state.comments = this.processComments(comments);
+			const comments = await this.client.fetchComments(post.id);
+			this.state.comments = comments;
 			this.state.hasMoreComments = comments.length === 10;
 		} catch (err) {
 			console.error('[PostStore] loadComments error:', err);
@@ -295,9 +294,8 @@ export class PostStore {
 		this.notify();
 
 		try {
-			const moreComments = await this.client.fetchComments(post.id, 10);
-			const processed = this.processComments(moreComments);
-			this.state.comments.push(...processed);
+			const moreComments = await this.client.fetchComments(post.id);
+			this.state.comments.push(...moreComments);
 			this.state.commentsPage++;
 			this.state.hasMoreComments = moreComments.length === 10;
 		} catch (err) {
@@ -306,33 +304,5 @@ export class PostStore {
 			this.state.commentsLoading = false;
 			this.notify();
 		}
-	}
-
-	/**
-	 * Process raw comments — add depth and default collapsed state
-	 */
-	private processComments(comments: RedditComment[], depth = 0): RedditComment[] {
-		return comments.map((c) => ({
-			...c,
-			depth,
-			collapsed: depth > 0,
-			replies: c.replies ? this.processComments(c.replies, depth + 1) : [],
-		}));
-	}
-
-	/**
-	 * Toggle comment expanded/collapsed state
-	 */
-	toggleComment(commentId: string): void {
-		if (this.state.expandedComments.has(commentId)) {
-			this.state.expandedComments.delete(commentId);
-		} else {
-			this.state.expandedComments.add(commentId);
-		}
-		this.notify();
-	}
-
-	isCommentExpanded(commentId: string): boolean {
-		return this.state.expandedComments.has(commentId);
 	}
 }
