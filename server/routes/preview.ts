@@ -1,6 +1,6 @@
 /// <reference types="@cloudflare/workers-types" />
 import { Hono } from 'hono';
-import { preview as previewModes } from '../features/preview';
+import { PeekalinkRedirectLoopError, preview as previewModes } from '../features/preview';
 import { PreviewData } from '../types/preview';
 
 const router = new Hono();
@@ -130,6 +130,11 @@ router.get('/', async (c) => {
 
 		return response;
 	} catch (err) {
+		if (err instanceof PeekalinkRedirectLoopError) {
+			c.executionCtx.waitUntil(cache.put(cacheKey, c.json({ url: url, error: 'Link redirects to itself' }, 400)));
+			return c.json({ error: 'Link redirects to itself' }, 400);
+		}
+
 		const message = err instanceof Error ? err.message : String(err);
 		console.error(`[Preview] Error for ${url}:`, message);
 		return c.json({ error: message }, 500);

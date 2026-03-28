@@ -6,7 +6,7 @@ const ENV = env as Record<string, string>;
 const LINKPREVIEW_API_KEY = ENV.LINKPREVIEW_API_KEY;
 const PEEKALINK_API_KEY = ENV.PEEKALINK_API_KEY;
 
-class PeekalinkRedirectLoopError extends Error {
+export class PeekalinkRedirectLoopError extends Error {
 	constructor(url: string) {
 		super(`Peekalink: link redirects to itself (${url})`);
 		this.name = 'PeekalinkRedirectLoopError';
