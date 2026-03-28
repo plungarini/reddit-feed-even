@@ -1,41 +1,50 @@
 {
-  "name": "reddit-client-even",
-  "version": "1.0.0",
-  "description": "A full-featured Reddit client for Even Realities G2 smart glasses",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "dev": "vite --host 0.0.0.0 --port 5173",
-    "build": "tsc && vite build",
-    "preview": "vite preview --host 0.0.0.0",
-    "qr": "evenhub qr --http --port 5173",
-    "pack": "npm run build && evenhub pack app.json dist -o reddit-client.ehpk",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "@evenrealities/even_hub_sdk": "^0.0.9",
-    "idb": "^8.0.0"
-  },
-  "devDependencies": {
-    "@evenrealities/evenhub-cli": "^0.1.10",
-    "@evenrealities/evenhub-simulator": "^0.6.2",
-    "typescript": "^5.0.0",
-    "vite": "^6.0.0",
-    "vitest": "^2.0.0"
-  },
-  "keywords": [
-    "reddit",
-    "even-hub",
-    "g2",
-    "smart-glasses"
-  ],
-  "author": "Pietro Lungarini",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/plungarini/reddit-client-even.git"
-  },
-  "homepage": "https://plungarini.github.io/reddit-client-even/"
+	"author": "Pietro Lungarini",
+	"dependencies": {
+		"@evenrealities/even_hub_sdk": "^0.0.9",
+		"common-tags": "^1.8.2",
+		"hono": "^4.12.9"
+	},
+	"description": "A full-featured Reddit client for Even Realities G2 smart glasses",
+	"devDependencies": {
+		"@cloudflare/workers-types": "^4.20260317.1",
+		"@evenrealities/evenhub-cli": "^0.1.10",
+		"@evenrealities/evenhub-simulator": "^0.6.2",
+		"@types/common-tags": "^1.8.4",
+		"@types/node": "^25.5.0",
+		"concurrently": "^9.1.2",
+		"tsx": "^4.19.3",
+		"typescript": "^5.0.0",
+		"vite": "^6.0.0",
+		"vitest": "^2.0.0",
+		"wrangler": "^4.77.0"
+	},
+	"homepage": "https://plungarini.github.io/reddit-client-even/",
+	"keywords": [
+		"reddit",
+		"even-hub",
+		"g2",
+		"smart-glasses"
+	],
+	"license": "MIT",
+	"name": "reddit-client-even",
+	"private": true,
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/plungarini/reddit-client-even.git"
+	},
+	"scripts": {
+		"build": "tsc && vite build",
+		"dev": "concurrently -n QR,VITE,SERVER -c cyan,green,yellow \"evenhub qr --http --port 5173\" \"vite --host 0.0.0.0 --port 5173\" \"npm run server\"",
+		"pack": "npm run build && evenhub pack app.json dist -o reddit-client.ehpk",
+		"preview": "vite preview --host 0.0.0.0 --port 4173",
+		"qr:dev": "evenhub qr --http --port 5173",
+		"qr:preview": "evenhub qr --http --port 4173",
+		"server": "wrangler dev --port 3001",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"typecheck": "tsc --noEmit"
+	},
+	"type": "module",
+	"version": "1.0.0"
 }

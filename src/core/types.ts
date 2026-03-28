@@ -1,7 +1,5 @@
 /**
  * Reddit Client - Type Definitions
- * 
- * Based on reddit-pi service research and Reddit API documentation
  */
 
 // ============================================================================
@@ -34,7 +32,11 @@ export interface RedditComment {
   body: string;
   score: number;
   createdUtc: number;
+  depth?: number;              // Indentation level (0 = top)
+  parentId?: string;
   replies?: RedditComment[];
+  collapsed?: boolean;         // UI state
+  hasMoreReplies?: boolean;
 }
 
 export interface RedditListing<T> {
@@ -42,20 +44,6 @@ export interface RedditListing<T> {
   data: {
     children: Array<{ kind: string; data: T }>;
     after: string | null;
-    before: string | null;
-    modhash?: string;
-    dist?: number;
-  };
-}
-
-export interface RedditMoreComments {
-  kind: 'more';
-  data: {
-    count: number;
-    name: string;
-    id: string;
-    parent_id: string;
-    children: string[];
   };
 }
 
@@ -66,7 +54,6 @@ export interface RedditMoreComments {
 export interface CachedPost extends RedditPost {
   cachedAt: number;
   seen: boolean;
-  interaction?: 'upvote' | 'downvote' | 'hide' | 'save';
 }
 
 export interface FeedConfig {
@@ -77,14 +64,14 @@ export interface FeedConfig {
   limit: number;
 }
 
-export type FeedEndpoint = 
-  | 'best' 
-  | 'hot' 
-  | 'new' 
-  | 'rising' 
-  | 'top' 
+export type FeedEndpoint =
+  | 'best'
+  | 'hot'
+  | 'new'
+  | 'rising'
+  | 'top'
   | 'controversial'
-  | 'r/popular' 
+  | 'r/popular'
   | 'r/all';
 
 export type SortOption = 'hot' | 'new' | 'top' | 'rising' | 'controversial';
@@ -98,9 +85,7 @@ export interface AppConfig {
   version: string;
   auth: AuthConfig;
   feed: FeedConfig;
-  sync: SyncConfig;
   cache: CacheConfig;
-  ui: UIConfig;
 }
 
 export interface AuthConfig {
@@ -108,60 +93,20 @@ export interface AuthConfig {
   tokenV2?: string;
   session?: string;
   userAgent: string;
-  modhash?: string;
-}
-
-export interface SyncConfig {
-  enabled: boolean;
-  intervalMinutes: number;
-  autoUpdate: boolean;
-  notifyOnNewPosts: boolean;
+  proxyUrl?: string;
 }
 
 export interface CacheConfig {
-  maxPosts: number;
-  expireAfterHours: number;
-  cacheComments: boolean;
+  durationMs: number;
 }
 
-export interface UIConfig {
-  showThumbnails: boolean;
-  compactView: boolean;
-  defaultSort: SortOption;
-  gestures: GestureConfig;
-}
 
-export interface GestureConfig {
-  swipeForward: Action;
-  swipeBackward: Action;
-  singleTap: Action;
-  doubleTap: Action;
-}
-
-export type Action = 
-  | 'next' 
-  | 'prev' 
-  | 'scrollUp' 
-  | 'scrollDown' 
-  | 'open' 
-  | 'back' 
-  | 'upvote' 
-  | 'downvote' 
-  | 'menu' 
-  | 'comments' 
-  | 'refresh';
 
 // ============================================================================
 // UI Types
 // ============================================================================
 
 export type ViewMode = 'feed' | 'detail' | 'comments' | 'menu';
-
-export interface SyncResult {
-  success: boolean;
-  postsAdded: number;
-  error?: string;
-}
 
 export interface RateLimitState {
   used: number;
@@ -176,19 +121,7 @@ export interface RateLimitState {
 
 export interface RedditClientInterface {
   initialize(): Promise<void>;
-  fetchFeed(config: FeedConfig): Promise<RedditPost[]>;
+  fetchFeed(config: FeedConfig, after?: string): Promise<{ posts: RedditPost[]; after: string | null }>;
   fetchComments(postId: string, limit?: number): Promise<RedditComment[]>;
-  upvote(fullname: string): Promise<void>;
-  downvote(fullname: string): Promise<void>;
-  unvote(fullname: string): Promise<void>;
-  hide(fullname: string): Promise<void>;
-  unhide(fullname: string): Promise<void>;
-  save(fullname: string): Promise<void>;
-  unsave(fullname: string): Promise<void>;
 }
 
-export interface CacheEntry {
-  posts: CachedPost[];
-  fetchedAt: number;
-  config: FeedConfig;
-}

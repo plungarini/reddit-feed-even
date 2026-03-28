@@ -2,11 +2,11 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, master, develop ]
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -14,11 +14,13 @@ concurrency:
   group: "pages"
   cancel-in-progress: false
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  # Deploy production from master/main branch
+  deploy-production:
+    if: github.ref_name == 'master' || github.ref_name == 'main'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -27,28 +29,78 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Build app
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Build app for GitHub Pages
         run: npm run build
+        env:
+          NODE_ENV: production
+          GITHUB_PAGES: 'true'
 
-      - name: Copy config page to dist
+      - name: Add static files
         run: |
-          cp config.html dist/
           cp -r public dist/ 2>/dev/null || true
+          echo '{"environment":"production","branch":"${{ github.ref_name }}","commit":"${{ github.sha }}"}' > dist/version.json
 
-      - name: Setup Pages
-        uses: actions/configure-pages@v4
-
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+      - name: Deploy Production
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          path: './dist'
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          destination_dir: .
+          keep_files: true
 
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Output URL
+        run: |
+          echo "🚀 Production: https://${{ github.repository_owner }}.github.io/reddit-client-even/"
+
+  # Deploy staging from develop branch
+  deploy-staging:
+    if: github.ref_name == 'develop'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Build app for GitHub Pages (Staging)
+        run: npm run build
+        env:
+          NODE_ENV: development
+          GITHUB_PAGES: 'true'
+          STAGING: 'true'
+
+      - name: Add static files
+        run: |
+          cp -r public dist/ 2>/dev/null || true
+          echo '{"environment":"staging","branch":"${{ github.ref_name }}","commit":"${{ github.sha }}"}' > dist/version.json
+
+      - name: Deploy Staging
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          destination_dir: staging
+          keep_files: true
+
+      - name: Output URL
+        run: |
+          echo "🧪 Staging: https://${{ github.repository_owner }}.github.io/reddit-client-even/staging/"

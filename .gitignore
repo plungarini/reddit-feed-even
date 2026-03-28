@@ -4,6 +4,7 @@ node_modules/
 # Build output
 dist/
 *.tsbuildinfo
+.wrangler
 
 # Even Hub package files
 *.ehpk
@@ -11,6 +12,7 @@ dist/
 # Environment variables
 .env
 .env.local
+.dev.vars
 
 # IDE
 .vscode/

@@ -10,7 +10,7 @@
  * - Unauthenticated: ~10-20 requests/minute (estimated)
  */
 
-import { RateLimitState } from '../../types';
+import { RateLimitState } from '../core/types';
 
 export class RateLimiter {
   private state: RateLimitState = {
