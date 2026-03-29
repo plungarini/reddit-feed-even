@@ -15,7 +15,7 @@ const HEADER_H = 38;
 const BODY_Y = HEADER_H;
 const BODY_H = 288 - HEADER_H;
 const MAX_LINE_LEN = 55;
-const MAX_PAGE_CHARS = 1050;
+const MAX_PAGE_CHARS = 900;
 const COMMENTS_PER_PAGE = 10;
 
 // ─── Double-scroll config ─────────────────────────────────────────────────────
@@ -206,7 +206,16 @@ export class CommentView {
 		const slice = topComments.slice(startIdx, startIdx + COMMENTS_PER_PAGE);
 		if (slice.length === 0) return 'No comments on this page.';
 
-		return slice.map((c) => formatBlock(c)).join('\n\n') + '\n';
+		let content = '';
+		const maxLen = this.initialized ? 1900 : 900;
+
+		for (const c of slice) {
+			const block = formatBlock(c);
+			if (content.length + block.length > maxLen) break;
+			content += block + '\n\n';
+		}
+
+		return content;
 	}
 
 	// ─── Private: SDK calls ───────────────────────────────────────────────────
@@ -236,7 +245,7 @@ export class CommentView {
 			containerID: 2,
 			containerName: 'cmt-body',
 			isEventCapture: 1,
-			content: body,
+			content: body.slice(0, 999),
 		});
 		try {
 			const ok = await this.bridge.rebuildPageContainer(
@@ -256,7 +265,7 @@ export class CommentView {
 					containerName: 'cmt-body',
 					contentOffset: 0,
 					contentLength: content.length,
-					content,
+					content: content.slice(0, 1999),
 				}),
 			);
 			if (!ok) console.warn('[CommentView] upgradeBody returned false');

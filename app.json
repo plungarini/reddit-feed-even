@@ -9,13 +9,11 @@
 	"package_id": "com.plungarini.redditfed",
 	"permissions": [
 		{
-			"name": "network",
-			"desc": "Access network to fetch Reddit feeds"
+			"desc": "Access network to fetch Reddit feeds",
+			"name": "network"
 		}
 	],
-	"supported_languages": [
-		"en"
-	],
+	"supported_languages": ["en"],
 	"tagline": "Browse Reddit on your ER glasses",
 	"version": "1.0.0"
 }
