@@ -13,7 +13,7 @@ router.get('/test-auth', async (c) => {
 		if (session) cookies.push(`reddit_session=${session}`);
 
 		const headers: Record<string, string> = {
-			'User-Agent': c.req.header('x-reddit-user-agent') || 'reddit-client-even/1.0',
+			'User-Agent': c.req.header('x-reddit-user-agent') || 'reddit-feed-even/1.0',
 			Accept: 'application/json',
 		};
 		if (cookies.length > 0) {
@@ -76,7 +76,7 @@ router.all('/:proxyPath{.+}', async (c) => {
 
 		const token = c.req.header('x-reddit-token');
 		const session = c.req.header('x-reddit-session');
-		const ua = c.req.header('x-reddit-user-agent') || 'reddit-client-even/1.0';
+		const ua = c.req.header('x-reddit-user-agent') || 'reddit-feed-even/1.0';
 
 		const cookies: string[] = [];
 		if (token) cookies.push(`token_v2=${token}`);
