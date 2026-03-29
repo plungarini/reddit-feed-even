@@ -230,10 +230,7 @@ async function main() {
 
 		// While loading: pass DOUBLE_CLICK through in detail/comments so user can abort
 		if (state.loading || state.loadingMore || state.commentsLoading) {
-			if (
-				type === OsEventTypeList.DOUBLE_CLICK_EVENT &&
-				(view === 'detail' || view === 'comments')
-			) {
+			if (type === OsEventTypeList.DOUBLE_CLICK_EVENT && (view === 'detail' || view === 'comments')) {
 				console.log(`[Main] DOUBLE_CLICK abort on view=${view}`);
 				activeAbortController?.abort();
 				activeAbortController = null;
@@ -349,16 +346,12 @@ function handleMenuEvent(
 			activeEndpoint = selected.id;
 			console.log(`[Main] Menu selecting: index=${selectedIdx} endpoint=${activeEndpoint}`);
 			menuSelecting = true;
-			// 1. Synchronously reset store state to avoid "flash" of old feed
 			postStore.prepareForNewLoad();
-			// 2. Reset UI to 'feed' view (now showing Loading... immediately)
+			postStore.loadFeedByEndpoint(activeEndpoint).catch(console.error);
 			uiManager.reset();
 			uiManager.updateCurrentContext({ pageIndex: 0, highlightIndex: 0 });
-			// 3. Start the actual load
-			postStore.loadFeedByEndpoint(activeEndpoint).catch(console.error);
 		}
 	} else if (type === OsEventTypeList.DOUBLE_CLICK_EVENT) {
-		// Cancel menu: return to previous feed state
 		uiManager.goBack();
 	}
 }
@@ -378,8 +371,8 @@ function handleDetailEvent(
 			commentView.reset();
 			commentView.setContext(post.subreddit, post.title);
 			startLoadAnim();
-			postStore.loadComments(activeAbortController.signal).catch(console.error);
 			uiManager.pushView({ view: 'comments', postId: post.id });
+			postStore.loadComments(activeAbortController.signal).catch(console.error);
 		}
 	} else if (type === OsEventTypeList.DOUBLE_CLICK_EVENT) {
 		// Also abort any pending (e.g. link preview update still in flight)
@@ -479,7 +472,7 @@ async function render(bridge: Bridge, postStore: PostStore, uiManager: UIManager
 				}
 				// Robust check for loading hangs: if we have posts and we're not loading, force transition to feed view.
 				if (state.posts.length === 0 || state.loading) {
-					await showStatus(bridge, `Loading feed${'.'.repeat(animDots)}`, false);
+					await showStatus(bridge, `Loading your feed${'.'.repeat(animDots)}`, false);
 					return;
 				}
 				await views.feed.render(
@@ -512,7 +505,7 @@ async function render(bridge: Bridge, postStore: PostStore, uiManager: UIManager
 				break;
 
 			case 'menu':
-				menuSelecting = false;
+				if (menuSelecting) return;
 				await views.menu.render(activeEndpoint);
 				break;
 		}

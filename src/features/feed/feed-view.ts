@@ -13,7 +13,7 @@ export const FOOTER_CONTAINER_ID = POSTS_PER_PAGE + 1; // 5
 
 const POST_H = 64;
 const WIDTH = 576;
-const FOOTER_Y = POSTS_PER_PAGE * POST_H + 5;
+const FOOTER_Y = POSTS_PER_PAGE * POST_H;
 const FOOTER_H = 288;
 const MAX_POST_TITLE_LEN = 56;
 
@@ -115,22 +115,11 @@ export class FeedView {
 			return;
 		}
 
-		const now = Date.now();
-		if (this.scrollPrimed === 'up' && now - this.scrollPrimedAt <= DOUBLE_SCROLL_MS) {
-			// Confirmed — go to prev page
-			console.log('[FeedView] Double-scroll ↑ confirmed → prev page');
-			this._resetScrollPrimed();
-			this._updateFooter(buildFooter(false, false, 3));
-			onPrevPage();
-		} else {
-			// First scroll — show hint
-			console.log('[FeedView] Double-scroll ↑ primed');
-			this._resetScrollPrimed();
-			this.scrollPrimed = 'up';
-			this.scrollPrimedAt = now;
-			this._armResetTimer();
-			this._updateFooter(buildFooter(false, true, 3));
-		}
+		// Go to prev page instantly
+		console.log('[FeedView] Scroll ↑ → prev page');
+		this._resetScrollPrimed();
+		this._updateFooter(buildFooter(false, false, 3));
+		onPrevPage();
 	}
 
 	// ─── Render ───────────────────────────────────────────────────────────────
