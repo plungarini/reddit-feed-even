@@ -15,7 +15,7 @@ const HEADER_H = 38;
 const BODY_Y = HEADER_H;
 const BODY_H = 288 - HEADER_H;
 const MAX_LINE_LEN = 55;
-const MAX_PAGE_CHARS = 2000;
+const MAX_PAGE_CHARS = 1050;
 const COMMENTS_PER_PAGE = 10;
 
 // ─── Double-scroll config ─────────────────────────────────────────────────────
@@ -36,6 +36,7 @@ export class CommentView {
 	// Render state — set BEFORE the first await to prevent race conditions
 	private initialized = false;
 	private rendering = false; // render lock
+	private renderQueued = false;
 	private lastBodyContent = '';
 	private lastHeaderContent = '';
 
@@ -60,6 +61,7 @@ export class CommentView {
 		this.subreddit = '';
 		this.initialized = false;
 		this.rendering = false;
+		this.renderQueued = false;
 		this.lastBodyContent = '';
 		this.lastHeaderContent = '';
 		this.scrollHint = '';
@@ -137,9 +139,8 @@ export class CommentView {
 	// ─── Render ───────────────────────────────────────────────────────────────
 
 	async render(comments: RedditComment[], hasMore: boolean, loading: boolean, dotsCount = 0): Promise<void> {
-		// Drop concurrent renders — the last page-change call will re-render anyway
 		if (this.rendering) {
-			console.log('[CommentView] render skipped (locked)');
+			this.renderQueued = true;
 			return;
 		}
 		this.rendering = true;
@@ -179,6 +180,10 @@ export class CommentView {
 			}
 		} finally {
 			this.rendering = false;
+			if (this.renderQueued) {
+				this.renderQueued = false;
+				this.render(comments, hasMore, loading, dotsCount).catch(console.error);
+			}
 		}
 	}
 
@@ -195,7 +200,7 @@ export class CommentView {
 
 	private buildBody(topComments: RedditComment[], loading: boolean, dotsCount = 0): string {
 		if (loading && topComments.length === 0) return `Loading comments${'.'.repeat(dotsCount)}`;
-		if (topComments.length === 0) return 'No comments yet.';
+		if (topComments.length === 0) return 'Failed to load comments.';
 
 		const startIdx = this.pageIndex * COMMENTS_PER_PAGE;
 		const slice = topComments.slice(startIdx, startIdx + COMMENTS_PER_PAGE);
