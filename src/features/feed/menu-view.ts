@@ -94,7 +94,7 @@ export class MenuView {
 		const itemNames = FEED_ITEMS.map((item) => {
 			const active = item.id === currentEndpoint;
 			const indicator = active ? '>  ' : '   ';
-			return `${indicator}${item.label}  —  ${item.desc}`;
+			return `${indicator}${item.label}  -  ${item.desc}`;
 		});
 
 		const OFFSET = 120;
