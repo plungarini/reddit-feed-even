@@ -1,212 +1,167 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-	<head>
-		<meta charset="UTF-8" />
-		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-		<title>Reddit Client — Debug</title>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#232323">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Reddit G2</title>
 
-		<!--
-			Intercept console BEFORE main.ts loads so every log from the app
-			is captured and shown in the debug panel below.
-		-->
-		<script>
-			(function () {
-				globalThis.__debugLogs = [];
-				globalThis.__appState = {
-					status: 'starting',
-					view: 'feed',
-					posts: 0,
-					error: null,
-					bridgeReady: false,
-					serverUrl: null,
-				};
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" href="/favicon.ico">
+  
+  <script>
+    // Early console interception & state management
+    (function() {
+      globalThis.__debugLogs = [];
+      globalThis.__appState = { status: 'starting', view: 'feed', posts: 0, error: null, bridgeReady: false, serverUrl: null };
 
-				var _log = console.log.bind(console);
-				var _warn = console.warn.bind(console);
-				var _error = console.error.bind(console);
+      const capture = (level, args) => {
+        const msg = Array.from(args).map(a => {
+          if (a instanceof Error) return a.stack || a.message;
+          if (a !== null && typeof a === 'object') try { return JSON.stringify(a, null, 2); } catch(_) { return String(a); }
+          return String(a);
+        }).join(' ');
+        globalThis.__debugLogs.push({ level, msg, ts: Date.now() });
+        if (typeof globalThis.__refreshDebug === 'function') globalThis.__refreshDebug();
+      };
 
-				function capture(level, args) {
-					var msg = Array.prototype.slice
-						.call(args)
-						.map(function (a) {
-							if (a instanceof Error) return a.stack || a.message;
-							if (a !== null && typeof a === 'object') {
-								try {
-									return JSON.stringify(a, null, 2);
-								} catch (_) {
-									return String(a);
-								}
-							}
-							return String(a);
-						})
-						.join(' ');
-					globalThis.__debugLogs.push({ level: level, msg: msg, ts: Date.now() });
-					if (typeof globalThis.__refreshDebug === 'function') globalThis.__refreshDebug();
-				}
+      const _log = console.log.bind(console), _warn = console.warn.bind(console), _error = console.error.bind(console);
+      console.log = (...args) => { _log(...args); capture('log', args); };
+      console.warn = (...args) => { _warn(...args); capture('warn', args); };
+      console.error = (...args) => { _error(...args); capture('error', args); };
 
-				console.log = function () {
-					_log.apply(console, arguments);
-					capture('log', arguments);
-				};
-				console.warn = function () {
-					_warn.apply(console, arguments);
-					capture('warn', arguments);
-				};
-				console.error = function () {
-					_error.apply(console, arguments);
-					capture('error', arguments);
-				};
+      globalThis.addEventListener('error', e => capture('error', [`[Uncaught] ${e.message} @ ${e.filename}:${e.lineno}`]));
+      globalThis.addEventListener('unhandledrejection', e => capture('error', [`[Promise] ${e.reason?.stack || e.reason}`]));
+      globalThis.addEventListener('app:state', e => {
+        Object.assign(globalThis.__appState, e.detail);
+        if (typeof globalThis.__refreshDebug === 'function') globalThis.__refreshDebug();
+      });
+    })();
+  </script>
 
-				globalThis.addEventListener('error', function (e) {
-					capture('error', ['[Uncaught] ' + e.message + (e.filename ? ' @ ' + e.filename + ':' + e.lineno : '')]);
-				});
-				globalThis.addEventListener('unhandledrejection', function (e) {
-					var r = e.reason;
-					capture('error', ['[Promise] ' + (r instanceof Error ? r.stack || r.message : String(r))]);
-				});
+  <script type="module" src="/src/main.ts"></script>
+  <script type="module" src="/src/ui/debug-panel.ts"></script>
+  <link rel="stylesheet" href="/src/ui/debug-panel.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Status View -->
+    <div id="view-status" class="view active">
+      <header>
+        <h1 class="text-large-title">Reddit G2</h1>
+        <span id="status-badge" class="status-indicator pending">Starting…</span>
+      </header>
 
-				// Listen for state updates dispatched by main.ts
-				globalThis.addEventListener('app:state', function (e) {
-					Object.assign(globalThis.__appState, e.detail);
-					if (typeof globalThis.__refreshDebug === 'function') globalThis.__refreshDebug();
-				});
-			})();
-		</script>
+      <div class="card">
+        <h2 class="card-title">Device Connection</h2>
+        <div class="stat-grid">
+          <div class="stat-item">
+            <span class="stat-label">Bridge</span>
+            <span id="st-bridge" class="stat-value">waiting</span>
+          </div>
+          <div id="server-info" class="stat-item">
+            <span class="stat-label">Server</span>
+            <span id="st-server" class="stat-value">checking…</span>
+          </div>
+        </div>
+        <div id="error-box" class="error-box"></div>
+      </div>
 
-		<!-- App entry point — initialises the glasses display -->
-		<script type="module" src="/src/main.ts"></script>
+      <div class="card">
+        <h2 class="card-title">Live App State</h2>
+        <div class="stat-grid">
+          <div class="stat-item">
+            <span class="stat-label">Status</span>
+            <span id="st-status" class="stat-value">starting</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">View</span>
+            <span id="st-view" class="stat-value">—</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Loaded Posts</span>
+            <span id="st-posts" class="stat-value">0</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Auth</span>
+            <span id="st-auth" class="stat-value">—</span>
+          </div>
+        </div>
+      </div>
+    </div>
 
-		<link rel="stylesheet" href="ui/debug-panel.css" />
-	</head>
-	<body>
-		<div class="grid" id="app">
-			<!-- Header -->
-			<div class="header">
-				<div class="header-logo">🤖</div>
-				<div>
-					<div class="h1" style="font-size: 18px; font-weight: 700">Reddit Client</div>
-					<div class="subtitle">Even Realities G2 · Debug Panel</div>
-				</div>
-				<span class="badge pending" id="status-badge">Starting…</span>
-			</div>
+    <!-- Settings View -->
+    <div id="view-settings" class="view">
+      <header><h1 class="text-large-title">Settings</h1></header>
 
-			<!-- State card -->
-			<div class="card col-full">
-				<div class="card-title">📊 App State</div>
-				<div class="state-grid">
-					<div class="stat">
-						<div class="stat-label">Status</div>
-						<div class="stat-value muted" id="st-status">starting</div>
-					</div>
-					<div class="stat">
-						<div class="stat-label">Bridge</div>
-						<div class="stat-value muted" id="st-bridge">waiting</div>
-					</div>
-					<div class="stat">
-						<div class="stat-label">Posts loaded</div>
-						<div class="stat-value muted" id="st-posts">0</div>
-					</div>
-					<div class="stat">
-						<div class="stat-label">Current view</div>
-						<div class="stat-value muted" id="st-view">—</div>
-					</div>
-					<div class="stat">
-						<div class="stat-label">Server</div>
-						<div class="stat-value muted" id="st-server">checking…</div>
-					</div>
-					<div class="stat">
-						<div class="stat-label">Auth</div>
-						<div class="stat-value muted" id="st-auth">—</div>
-					</div>
-				</div>
-				<div class="error-box" id="error-box"></div>
-			</div>
+      <div class="card">
+        <div class="field">
+          <label>Reddit token_v2</label>
+          <input type="password" id="input-token" placeholder="Paste token_v2…">
+        </div>
+        <div class="field">
+          <label>Reddit reddit_session</label>
+          <input type="password" id="input-session" placeholder="Paste reddit_session…">
+        </div>
+        <div class="field">
+          <label>Backend Proxy URL</label>
+          <input type="text" id="input-proxy" placeholder="https://…">
+          <small id="server-url-display">detecting…</small>
+        </div>
+        <div class="field">
+          <label>Initial Feed</label>
+          <select id="input-feed">
+            <option value="hot">Hot</option>
+            <option value="new">New</option>
+            <option value="rising">Rising</option>
+            <option value="top">Top</option>
+            <option value="best">Best</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Cache (minutes)</label>
+          <input type="number" id="input-cache" min="1" value="5">
+        </div>
 
-			<!-- Settings -->
-			<div class="card">
-				<div class="card-title">⚙️ Settings</div>
+        <div class="btn-group">
+          <button class="btn primary" onclick="saveSettings()">Save</button>
+          <button class="btn secondary" onclick="testAuth()">Test Auth</button>
+          <button class="btn secondary" onclick="clearCache()">Clear Cache</button>
+          <button class="btn danger" onclick="clearAll()">Reset All</button>
+        </div>
+      </div>
+    </div>
 
-				<div id="server-info" class="server-info">
-					<div class="dot" id="server-dot"></div>
-					<span id="server-url-display">detecting…</span>
-				</div>
+    <!-- Logs View -->
+    <div id="view-logs" class="view">
+      <header>
+        <h1 class="text-large-title">Logs <span id="log-count"></span></h1>
+        <button class="btn secondary" style="padding: 6px 12px; font-size: 11px;" onclick="copyLogs()">Copy</button>
+      </header>
 
-				<div class="field">
-					<label>Reddit token_v2 cookie</label>
-					<input type="password" id="input-token" placeholder="Paste token_v2 value here…" autocomplete="off" />
-					<small>Get from: reddit.com → DevTools → Application → Cookies → token_v2</small>
-				</div>
-				<div class="field">
-					<label>Reddit reddit_session cookie</label>
-					<input type="password" id="input-session" placeholder="Paste reddit_session value here…" autocomplete="off" />
-					<small>Also from Cookies → reddit_session (required for auth)</small>
-				</div>
-				<div class="field">
-					<label>Proxy Server URL (Backend)</label>
-					<input type="text" id="input-proxy" placeholder="e.g. https://my-worker.workers.dev/" />
-					<small>Default: LAN IP:3001 or env.js value</small>
-				</div>
-				<div class="field">
-					<label>Feed endpoint</label>
-					<select id="input-feed">
-						<option value="hot">Hot - Trending now</option>
-						<option value="new">New - Latest posts</option>
-						<option value="rising">Rising - Gaining popularity</option>
-						<option value="top">Top - Highest rated</option>
-						<option value="controversial">Controversial - Most debated</option>
-						<option value="best">Best - Personalized feed</option>
-						<option value="r/popular">Popular - Across Reddit</option>
-						<option value="r/all">All - Everything</option>
-					</select>
-				</div>
-				<div class="field">
-					<label>Cache duration (minutes)</label>
-					<input type="number" id="input-cache" min="1" placeholder="5" />
-					<small>How long to reuse fetched posts before hitting Reddit again. Min: 1 minute.</small>
-				</div>
-								<!-- <div class="field">
-					<label>Subreddit (leave empty for front page)</label>
-					<input type="text" id="input-subreddit" placeholder="e.g. technology" />
-				</div> -->
-				<div class="btn-row" style="margin-top: 4px">
-					<button class="btn primary" onclick="saveSettings()">💾 Save</button>
-					<button class="btn secondary" onclick="testAuth()">🔐 Test Auth</button>
-					<button class="btn secondary" onclick="clearCache()">🧼 Clear Cache</button>
-					<button class="btn danger" onclick="clearAll()">🗑 Clear All</button>
-				</div>
-			</div>
+      <div class="log-filters">
+        <button id="f-log" class="filter-chip active" onclick="toggleFilter('log')">Log</button>
+        <button id="f-warn" class="filter-chip active" onclick="toggleFilter('warn')">Warn</button>
+        <button id="f-error" class="filter-chip active" onclick="toggleFilter('error')">Error</button>
+        <button class="filter-chip" style="margin-left: auto; opacity: 1;" onclick="clearLogs()">Clear</button>
+      </div>
 
-			<!-- Console log -->
-			<div class="card">
-				<div class="card-title">
-					📋 Console Log
-					<span id="log-count" style="margin-left: 4px; color: var(--muted)"></span>
-				</div>
-				<div class="log-toolbar">
-					<div class="filters">
-						<button class="filter-btn active-log" id="f-log" onclick="toggleFilter('log')">LOG</button>
-						<button class="filter-btn active-warn" id="f-warn" onclick="toggleFilter('warn')">WARN</button>
-						<button class="filter-btn active-error" id="f-error" onclick="toggleFilter('error')">ERROR</button>
-					</div>
-					<button
-						class="btn secondary"
-						style="margin-left: auto; padding: 3px 8px; font-size: 11px"
-						onclick="copyLogs()"
-					>
-						📋 Copy
-					</button>
-					<button class="btn secondary" style="padding: 3px 8px; font-size: 11px" onclick="clearLogs()">Clear</button>
-					<button class="btn secondary" style="padding: 3px 8px; font-size: 11px" onclick="scrollLogsBottom()">
-						↓ Bottom
-					</button>
-				</div>
-				<div id="log-panel">
-					<div class="empty-state">No logs yet — waiting for app to start…</div>
-				</div>
-			</div>
-		</div>
-		<!-- /grid -->
+      <div id="log-panel"></div>
+    </div>
+  </div>
 
-		<script src="ui/debug-panel.js"></script>
-	</body>
+  <nav class="bottom-nav">
+    <a href="javascript:void(0)" id="nav-status" class="nav-item active" onclick="switchTab('status')">
+      <i>📊</i><span>Status</span>
+    </a>
+    <a href="javascript:void(0)" id="nav-settings" class="nav-item" onclick="switchTab('settings')">
+      <i>⚙️</i><span>Settings</span>
+    </a>
+    <a href="javascript:void(0)" id="nav-logs" class="nav-item" onclick="switchTab('logs')">
+      <i>📋</i><span>Logs</span>
+    </a>
+  </nav>
+</body>
 </html>
