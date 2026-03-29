@@ -4,11 +4,18 @@
 	"edition": "202601",
 	"entrypoint": "index.html",
 	"min_app_version": "0.1.0",
+	"min_sdk_version": "0.0.9",
 	"name": "Reddit Feed",
 	"package_id": "com.plungarini.redditfed",
-	"permissions": {
-		"network": ["reddit-feed-even.plungarini.workers.dev"]
-	},
+	"permissions": [
+		{
+			"name": "network",
+			"desc": "Access network to fetch Reddit feeds"
+		}
+	],
+	"supported_languages": [
+		"en"
+	],
 	"tagline": "Browse Reddit on your ER glasses",
 	"version": "1.0.0"
 }
