@@ -98,7 +98,8 @@ router.all('/:proxyPath{.+}', async (c) => {
 		});
 
 		if (!response.ok) {
-			console.error(`[Proxy] Reddit API error: ${response.status}`);
+			const error = await response.text();
+			console.error(`[Proxy] Reddit API error: ${response.status}`, error);
 			return c.json(
 				{
 					error: `Reddit API error: ${response.status}`,
