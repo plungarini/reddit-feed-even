@@ -3,12 +3,14 @@
 	"dependencies": {
 		"@evenrealities/even_hub_sdk": "^0.0.9",
 		"common-tags": "^1.8.2",
-		"hono": "^4.12.9"
+		"even-toolkit": "^1.4.2",
+		"hono": "^4.12.9",
+		"upng-js": "^2.1.0"
 	},
 	"description": "A full-featured Reddit client for Even Realities G2 smart glasses",
 	"devDependencies": {
 		"@cloudflare/workers-types": "^4.20260317.1",
-		"@evenrealities/evenhub-cli": "^0.1.10",
+		"@evenrealities/evenhub-cli": "^0.1.11",
 		"@evenrealities/evenhub-simulator": "^0.6.2",
 		"@types/common-tags": "^1.8.4",
 		"@types/node": "^25.5.0",
@@ -19,7 +21,7 @@
 		"vitest": "^2.0.0",
 		"wrangler": "^4.77.0"
 	},
-	"homepage": "https://plungarini.github.io/reddit-client-even/",
+	"homepage": "https://plungarini.github.io/reddit-feed-even/",
 	"keywords": [
 		"reddit",
 		"even-hub",
@@ -27,24 +29,20 @@
 		"smart-glasses"
 	],
 	"license": "MIT",
-	"name": "reddit-client-even",
+	"name": "reddit-feed-even",
 	"private": true,
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/plungarini/reddit-client-even.git"
+		"url": "git+https://github.com/plungarini/reddit-feed-even.git"
 	},
 	"scripts": {
 		"build": "tsc && vite build",
-		"dev": "concurrently -n QR,VITE,SERVER -c cyan,green,yellow \"evenhub qr --http --port 5173\" \"vite --host 0.0.0.0 --port 5173\" \"npm run server\"",
-		"pack": "npm run build && evenhub pack app.json dist -o reddit-client.ehpk",
-		"preview": "vite preview --host 0.0.0.0 --port 4173",
-		"qr:dev": "evenhub qr --http --port 5173",
-		"qr:preview": "evenhub qr --http --port 4173",
+		"dev": "concurrently -n QR,VITE,SERVER -c cyan,green,yellow \"npm run qr\" \"vite --host 0.0.0.0 --port 5173\" \"npm run server\"",
+		"pack": "npm run build && evenhub pack app.json dist -o reddit-feed.ehpk",
+		"qr": "evenhub qr --url http://192.168.1.102:5173",
 		"server": "wrangler dev --port 3001",
-		"test": "vitest run",
-		"test:watch": "vitest",
 		"typecheck": "tsc --noEmit"
 	},
 	"type": "module",
-	"version": "1.0.0"
+	"version": "1.0.1"
 }

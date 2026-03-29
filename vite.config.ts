@@ -8,8 +8,8 @@ export default defineConfig(({ command }) => ({
 			? './'
 			: process.env.GITHUB_PAGES === 'true'
 				? process.env.STAGING === 'true'
-					? '/reddit-client-even/staging/'
-					: '/reddit-client-even/'
+					? '/reddit-feed-even/staging/'
+					: '/reddit-feed-even/'
 				: './',
 	server: {
 		host: true,

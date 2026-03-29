@@ -18,5 +18,6 @@ app.use('*', async (c, next) => {
 app.route('/api/health', healthRouter);
 app.route('/api/reddit', redditRouter);
 app.route('/api/preview', previewRouter);
+app.route('/', healthRouter);
 
 export default app;

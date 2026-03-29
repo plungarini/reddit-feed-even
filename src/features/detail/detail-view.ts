@@ -23,6 +23,7 @@ import {
 	TextContainerUpgrade,
 } from '@evenrealities/even_hub_sdk';
 import { CachedPost } from '../../core/types';
+import { BORDER_RADIUS } from '../../shared/constants';
 import { capitalizeText, fmtScore, fmtTimeAgo, getStringChunks, normalizeWebText } from '../../shared/utils';
 
 const LINK_MAX_LINE_LEN = 52;
@@ -33,11 +34,9 @@ export class DetailView {
 	private readonly proxyUrl: string;
 	private lastPostId: string | null = null;
 
-	constructor(bridge: EvenAppBridge, proxyUrl?: string) {
+	constructor(bridge: EvenAppBridge, proxyUrl: string) {
 		this.bridge = bridge;
-		const host = globalThis?.location?.hostname || 'localhost';
-		const defaultProxy = `http://${host}:3001/api`;
-		this.proxyUrl = proxyUrl ? (proxyUrl.endsWith('/') ? proxyUrl.slice(0, -1) : proxyUrl) : defaultProxy;
+		this.proxyUrl = proxyUrl.endsWith('/') ? proxyUrl.slice(0, -1) : proxyUrl;
 		if (this.proxyUrl && !this.proxyUrl.endsWith('/api')) {
 			this.proxyUrl = `${this.proxyUrl}/api`;
 		}
@@ -46,11 +45,12 @@ export class DetailView {
 	/**
 	 * Render post detail - single text container with scrollable content
 	 */
-	async render(post: CachedPost): Promise<void> {
+	async render(post: CachedPost, signal?: AbortSignal): Promise<void> {
 		if (!post?.id) {
 			console.error('[DetailView] Invalid post');
 			return;
 		}
+		if (signal?.aborted) return;
 
 		const postChanged = this.lastPostId !== post.id;
 		this.lastPostId = post.id;
@@ -70,7 +70,11 @@ export class DetailView {
 			content: ` r/${post.subreddit}  [ ${score} ↑  ${comments} c ]`,
 		});
 
-		const content = await this.buildContent(post, 'create');
+		const { content, trimmed } = await this.buildContent(post, 'create');
+		if (signal?.aborted) {
+			console.log('[DetailView] render aborted after buildContent');
+			return;
+		}
 		console.log(`[DetailView] render post=${post.id} len=${content.length} changed=${postChanged}`);
 
 		const detail = new TextContainerProperty({
@@ -80,7 +84,7 @@ export class DetailView {
 			height: 288 - headerHeight,
 			borderWidth: 1,
 			borderColor: 5,
-			borderRadius: 10,
+			borderRadius: BORDER_RADIUS,
 			paddingLength: 10,
 			containerID: 2,
 			containerName: 'detail',
@@ -98,16 +102,25 @@ export class DetailView {
 			console.log('[DetailView] rebuildPageContainer:', ok);
 			if (!ok) throw new Error('rebuildPageContainer returned false (detail)');
 
-			if (post.contentType === 'link') {
-				await this.updateContent(post);
+			if (trimmed) {
+				await this.updateContent(post, 'contentLen', signal);
+			}
+
+			if (post.contentType === 'link' && !signal?.aborted) {
+				await this.updateContent(post, 'update', signal);
 			}
 		} catch (error) {
 			console.error('[DetailView] rebuildPageContainer failed', error);
 		}
 	}
 
-	async updateContent(post: CachedPost) {
-		const content = await this.buildContent(post, 'update');
+	async updateContent(post: CachedPost, mode: 'contentLen' | 'update', signal?: AbortSignal) {
+		if (signal?.aborted) return;
+		const { content } = await this.buildContent(post, mode);
+		if (signal?.aborted) {
+			console.log('[DetailView] updateContent aborted after buildContent');
+			return;
+		}
 		console.log(`[DetailView] updateContent post=${post.id} len=${content.length}`);
 
 		try {
@@ -139,10 +152,14 @@ export class DetailView {
 	 *
 	 *   tap: comments  dbl: back
 	 */
-	private async buildContent(post: CachedPost, mode: 'create' | 'update'): Promise<string> {
-		const CHARS_LIMIT = mode === 'update' ? 2000 : 1000;
+	private async buildContent(
+		post: CachedPost,
+		mode: 'create' | 'contentLen' | 'update',
+	): Promise<{ content: string; trimmed: boolean }> {
+		const CHARS_LIMIT = ['update', 'contentLen'].includes(mode) ? 2000 : 1000;
 
 		let totalChars = 0;
+		let trimmed = false;
 		const lines: string[] = [];
 
 		lines.push(post.title);
@@ -161,19 +178,21 @@ export class DetailView {
 		}
 
 		const attachmentContent = attachmentLines.join('\n');
-		const footerContent = `\nu/${post.author} • ${fmtTimeAgo(post.createdUtc)}`;
+		const footerContent = `\nu/${post.author} • ${fmtTimeAgo(post.createdUtc)}\n`;
 		totalChars += attachmentContent.length + footerContent.length;
 
 		if (post.selftext) {
 			const remainingChars = CHARS_LIMIT - totalChars;
 			const body = '───────────────────────────\n' + normalizeWebText(post.selftext);
-			const truncated = body.length > remainingChars ? body.substring(0, remainingChars - 3) + '…' : body;
+
+			trimmed = body.length > remainingChars;
+			const truncated = trimmed ? body.substring(0, remainingChars - 50) + '…' : body;
 			lines.push(truncated);
 		}
 
 		lines.push(attachmentContent, footerContent);
 
-		return lines.join('\n');
+		return { content: lines.join('\n'), trimmed };
 	}
 }
 

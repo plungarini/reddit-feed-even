@@ -19,8 +19,8 @@ import { FEED_ITEMS, MenuView } from './features/feed/menu-view';
 import { PostStore } from './features/feed/post-store';
 import { getStringChunks } from './shared/utils';
 
-const CONFIG_KEY = 'reddit-client-config';
-const AUTH_KEY = 'reddit-client-auth';
+const CONFIG_KEY = 'reddit-feed-config';
+const AUTH_KEY = 'reddit-feed-auth';
 
 const LOAD_ANIM_MS = 300;
 
@@ -38,6 +38,9 @@ let animDots = 3;
 let loadAnimInterval: ReturnType<typeof setInterval> | null = null;
 let animTickFn: (() => void) | null = null; // set in main() once views are ready
 let menuSelecting = false; // guard against spurious menu rebuilds after selection
+
+// ─── Abort controller (detail/comments loading) ──────────────────────────────
+let activeAbortController: AbortController | null = null;
 
 type Bridge = Awaited<ReturnType<typeof waitForEvenAppBridge>>;
 
@@ -108,9 +111,7 @@ function statusParams(content: string, isError = false) {
 async function showStatus(bridge: Bridge, content: string, isError = false): Promise<void> {
 	const params = statusParams(content, isError);
 	if (!pageCreated) {
-		console.log('[SDK] createStartUpPageContainer…');
 		const result = await bridge.createStartUpPageContainer(new CreateStartUpPageContainer(params));
-		console.log('[SDK] createStartUpPageContainer result:', result);
 		if (result === StartUpPageCreateResult.success) {
 			pageCreated = true;
 		} else {
@@ -132,7 +133,14 @@ async function showStatus(bridge: Bridge, content: string, isError = false): Pro
 	}
 }
 
-// ─── Main ────────────────────────────────────────────────────────────────────
+// ─── App Logic ──────────────────────────────────────────────────────────────
+
+interface Views {
+	feed: FeedView;
+	detail: DetailView;
+	comment: CommentView;
+	menu: MenuView;
+}
 
 async function main() {
 	console.log('[RedditClient] Starting…');
@@ -165,38 +173,36 @@ async function main() {
 	}
 
 	const hasAuth = !!(config.auth.tokenV2 && config.auth.session);
-
-	console.log('[RedditClient] hasAuth:', hasAuth);
 	debugState({ hasAuth });
 
-	// Loading screen — establishes the page session via createStartUpPageContainer.
-	// All subsequent SDK calls (rebuildPageContainer) depend on this having been called first.
-	debugState({ status: 'loading' });
 	// Cache duration: read from config, min 60s
 	const cacheDurationMs = Math.max(60_000, config.cache.durationMs);
-	console.log(`[RedditClient] Cache duration: ${cacheDurationMs / 1000}s`);
 
 	// Core managers
 	const authManager = new AuthManager(config.auth);
 	const rateLimiter = new RateLimiter();
-	const redditClient = new RedditClient(authManager, rateLimiter);
+	const redditClient = new RedditClient(authManager, rateLimiter, config.api);
 	const postStore = new PostStore(redditClient, cacheDurationMs);
 	const uiManager = new UIManager();
 
+	// Wire rate limit callback
+	redditClient.setRateLimitCallback((seconds) => postStore.startRetryCountdown(seconds));
+
 	// Views
-	const feedView = new FeedView(bridge);
-	const detailView = new DetailView(bridge, config.auth.proxyUrl);
-	const commentView = new CommentView(bridge);
-	const menuView = new MenuView(bridge);
+	const views: Views = {
+		feed: new FeedView(bridge),
+		detail: new DetailView(bridge, config.api.baseUrl),
+		comment: new CommentView(bridge),
+		menu: new MenuView(bridge),
+	};
 
 	// Wire the animation tick to the render schedule now that all views exist
-	animTickFn = () => scheduleRender(bridge, postStore, uiManager, feedView, detailView, commentView, menuView);
+	animTickFn = () => scheduleRender(bridge, postStore, uiManager, views);
 
 	// Seed the active endpoint from the loaded config
 	activeEndpoint = config.feed.endpoint;
 
-	// Loading screen — establishes the page session via createStartUpPageContainer.
-	// All subsequent SDK calls (rebuildPageContainer) depend on this having been called first.
+	// Loading screen
 	debugState({ status: 'loading' });
 	await showStatus(bridge, 'Loading your feed...');
 
@@ -214,34 +220,32 @@ async function main() {
 
 	bridge.onEvenHubEvent((event) => {
 		const state = postStore.getState();
-		if (state.loading || state.loadingMore || state.commentsLoading) {
-			console.log('[Event] Ignoring event while loading');
-			return;
-		}
+
+		// Resolve event type first so we can check before the guard
+		const type = event.textEvent?.eventType ?? event.sysEvent?.eventType ?? event.listEvent?.eventType;
+		const listEvent = event.listEvent;
 
 		const entry = uiManager.getCurrentEntry();
 		const view = entry.view;
 
-		// Resolve event type
-		const type = event.textEvent?.eventType ?? event.sysEvent?.eventType ?? event.listEvent?.eventType;
-
-		// Extract list event data if present
-		const listEvent = event.listEvent;
-
-		// Handle all events
-		console.log(`[Event] view=${view} type=${type} (${OsEventTypeList[type as number] ?? 'CLICK'})`);
-		if (listEvent) {
-			console.log(
-				`[Event] listEvent index=${listEvent.currentSelectItemIndex} name="${listEvent.currentSelectItemName}"`,
-			);
+		// While loading: pass DOUBLE_CLICK through in detail/comments so user can abort
+		if (state.loading || state.loadingMore || state.commentsLoading) {
+			if (type === OsEventTypeList.DOUBLE_CLICK_EVENT && (view === 'detail' || view === 'comments')) {
+				console.log(`[Main] DOUBLE_CLICK abort on view=${view}`);
+				activeAbortController?.abort();
+				activeAbortController = null;
+				views.comment.reset();
+				uiManager.goBack();
+			}
+			return;
 		}
 
 		if (view === 'feed') {
-			handleFeedEvent(type, postStore, uiManager);
+			handleFeedEvent(type, postStore, uiManager, views.feed);
 		} else if (view === 'detail') {
-			handleDetailEvent(type, postStore, uiManager, commentView);
+			handleDetailEvent(type, postStore, uiManager, views.comment);
 		} else if (view === 'comments') {
-			handleCommentsEvent(type, postStore, uiManager, commentView);
+			handleCommentsEvent(type, postStore, uiManager, views.comment);
 		} else if (view === 'menu') {
 			handleMenuEvent(type, listEvent, postStore, uiManager);
 		}
@@ -251,17 +255,15 @@ async function main() {
 
 	postStore.subscribe(() => {
 		const { loading, loadingMore, commentsLoading } = postStore.getState();
-
 		if (!loading && !loadingMore && !commentsLoading) stopLoadAnim();
-
-		scheduleRender(bridge, postStore, uiManager, feedView, detailView, commentView, menuView);
+		scheduleRender(bridge, postStore, uiManager, views);
 	});
 
 	uiManager.subscribe(() => {
 		const view = uiManager.getCurrentView();
-		if (view !== 'comments') commentView.reset();
-
-		scheduleRender(bridge, postStore, uiManager, feedView, detailView, commentView, menuView);
+		if (view !== 'comments') views.comment.reset();
+		if (view !== 'feed') views.feed.reset();
+		scheduleRender(bridge, postStore, uiManager, views);
 	});
 
 	// ─── Load feed ────────────────────────────────────────────────────────────
@@ -273,48 +275,40 @@ async function main() {
 	} else {
 		debugState({ status: 'ready', posts: finalState.posts.length, error: null });
 	}
-	console.log('[RedditClient] Ready! Posts:', finalState.posts.length);
 }
 
 // ─── Event Handlers ─────────────────────────────────────────────────────────
 
-/**
- * Handle feed view events — manual scroll tracking.
- *
- * FeedView uses 6 TextContainerProperty instances (no firmware-managed list).
- * We track the highlighted index manually:
- *   SCROLL_DOWN → increment; at footer (index=postsPerPage) → next page
- *   SCROLL_UP   → decrement; below 0 → prev page
- *   CLICK       → open highlighted post, or load-more if footer selected
- *   DOUBLE_CLICK → refresh feed
- */
-function handleFeedEvent(type: OsEventTypeList | undefined, postStore: PostStore, uiManager: UIManager): void {
+function handleFeedEvent(
+	type: OsEventTypeList | undefined,
+	postStore: PostStore,
+	uiManager: UIManager,
+	feedView: FeedView,
+): void {
 	const state = postStore.getState();
 	const pagePosts = postStore.getCurrentPagePosts();
-	const lastIndex = Math.max(0, pagePosts.length - 1);
 
 	if (type === OsEventTypeList.SCROLL_BOTTOM_EVENT) {
-		const next = state.highlightedIndex + 1;
-		if (next <= lastIndex) {
-			postStore.setHighlight(next);
-		} else if (state.hasMore) {
-			// At last post and scroll down -> next page
-			startLoadAnim();
-			postStore.nextPage().catch(console.error);
-		}
+		feedView.onScrollDown(
+			state.highlightedIndex,
+			pagePosts,
+			state.hasMore,
+			(i) => postStore.setHighlight(i),
+			() => {
+				startLoadAnim();
+				postStore.nextPage().catch(console.error);
+			},
+		);
 	} else if (type === OsEventTypeList.SCROLL_TOP_EVENT) {
-		const prev = state.highlightedIndex - 1;
-		if (prev >= 0) {
-			postStore.setHighlight(prev);
-		} else if (state.currentPage > 0) {
-			// At first post and scroll up -> prev page
-			postStore.prevPage();
-		}
+		feedView.onScrollUp(
+			state.highlightedIndex,
+			state.currentPage,
+			(i) => postStore.setHighlight(i),
+			() => postStore.prevPage(),
+		);
 	} else if (type === OsEventTypeList.CLICK_EVENT || type === undefined) {
-		// Highlight now only ever lands on posts
 		const post = postStore.getHighlightedPost();
 		if (post) {
-			console.log(`[Feed] Opening post: ${post.id}`);
 			const currentEntry = uiManager.getCurrentEntry();
 			uiManager.pushView({
 				view: 'detail',
@@ -324,26 +318,16 @@ function handleFeedEvent(type: OsEventTypeList | undefined, postStore: PostStore
 			});
 		}
 	} else if (type === OsEventTypeList.DOUBLE_CLICK_EVENT) {
-		// Double-click from feed → open the endpoint menu
-		console.log('[Event] Opening feed menu…');
 		const currentEntry = uiManager.getCurrentEntry();
 		uiManager.pushView({
 			view: 'menu',
 			pageIndex: currentEntry.pageIndex,
 			highlightIndex: currentEntry.highlightIndex,
-			menuSelectedIndex: 0, // Hardware highlight always starts at 0 (Hot)
+			menuSelectedIndex: 0,
 		});
 	}
 }
 
-/**
- * Handle menu view events.
- *
- * ListContainerProperty sends listEvent with currentSelectItemIndex when the
- * firmware-managed highlight changes (scroll). We mirror that into UIManager.
- *   CLICK        → select highlighted endpoint, load feed, go back
- *   DOUBLE_CLICK → exit menu without changing anything
- */
 function handleMenuEvent(
 	type: OsEventTypeList | undefined,
 	listEvent: { currentSelectItemIndex?: number; currentSelectItemName?: string } | undefined,
@@ -351,38 +335,27 @@ function handleMenuEvent(
 	uiManager: UIManager,
 ): void {
 	const entry = uiManager.getCurrentEntry();
-	const currentIdx = entry.menuSelectedIndex ?? 0;
-
-	// Mirror firmware list-scroll into our navigation context
-	if (listEvent?.currentSelectItemIndex !== undefined) {
-		uiManager.updateCurrentContext({ menuSelectedIndex: listEvent.currentSelectItemIndex });
-	}
-
-	if (type === OsEventTypeList.CLICK_EVENT || type === undefined) {
-		// Use the firmware's reported index if available, otherwise our tracked one
-		const idx = listEvent?.currentSelectItemIndex ?? currentIdx;
-		const item = FEED_ITEMS[idx];
-		if (item) {
-			activeEndpoint = item.id;
+	if (type === OsEventTypeList.SCROLL_BOTTOM_EVENT || type === OsEventTypeList.SCROLL_TOP_EVENT) {
+		// Firmware handles list highlighting.
+		console.log(`[Main] Menu scrolled: ${type === OsEventTypeList.SCROLL_BOTTOM_EVENT ? 'bottom' : 'top'}`);
+	} else if (type === OsEventTypeList.CLICK_EVENT || type === undefined) {
+		// Preference: use the index informed by the glasses during the click
+		const selectedIdx = listEvent?.currentSelectItemIndex ?? entry.menuSelectedIndex ?? 0;
+		const selected = FEED_ITEMS[selectedIdx];
+		if (selected) {
+			activeEndpoint = selected.id;
+			console.log(`[Main] Menu selecting: index=${selectedIdx} endpoint=${activeEndpoint}`);
 			menuSelecting = true;
-			postStore.loadFeedByEndpoint(item.id).catch(() => {});
-			startLoadAnim();
-			uiManager.goBack();
+			postStore.prepareForNewLoad();
+			postStore.loadFeedByEndpoint(activeEndpoint).catch(console.error);
+			uiManager.reset();
+			uiManager.updateCurrentContext({ pageIndex: 0, highlightIndex: 0 });
 		}
 	} else if (type === OsEventTypeList.DOUBLE_CLICK_EVENT) {
-		console.log('[Menu] Exiting without change');
 		uiManager.goBack();
 	}
 }
 
-/**
- * Handle detail view events with text container
- *
- * Text container doesn't send listEvent.
- * - CLICK: go to comments
- * - DOUBLE_CLICK: back to feed
- * - Scroll events scroll content (firmware handled)
- */
 function handleDetailEvent(
 	type: OsEventTypeList | undefined,
 	postStore: PostStore,
@@ -390,28 +363,25 @@ function handleDetailEvent(
 	commentView: CommentView,
 ): void {
 	if (type === OsEventTypeList.CLICK_EVENT || type === undefined) {
-		// Single tap = go to comments
 		const post = postStore.getHighlightedPost();
 		if (post) {
-			console.log(`[Detail] Opening comments for: ${post.id}`);
+			// Abort any pending detail load before navigating deeper
+			activeAbortController?.abort();
+			activeAbortController = new AbortController();
 			commentView.reset();
 			commentView.setContext(post.subreddit, post.title);
 			startLoadAnim();
-			postStore.loadComments().catch(console.error);
 			uiManager.pushView({ view: 'comments', postId: post.id });
+			postStore.loadComments(activeAbortController.signal).catch(console.error);
 		}
 	} else if (type === OsEventTypeList.DOUBLE_CLICK_EVENT) {
-		// Double tap = back to feed
-		console.log('[Detail] Going back to feed');
+		// Also abort any pending (e.g. link preview update still in flight)
+		activeAbortController?.abort();
+		activeAbortController = null;
 		uiManager.goBack();
 	}
-	// Scroll events are consumed by text container for content scrolling
 }
 
-/**
- * Handle comments view events.
- * All double-scroll logic lives in CommentView; this function just delegates.
- */
 function handleCommentsEvent(
 	type: OsEventTypeList | undefined,
 	postStore: PostStore,
@@ -421,12 +391,13 @@ function handleCommentsEvent(
 	const { comments, hasMoreComments, commentsLoading } = postStore.getState();
 	if (type === OsEventTypeList.SCROLL_BOTTOM_EVENT) {
 		commentView.onScrollDown(comments, hasMoreComments, commentsLoading, () =>
-			postStore.loadMoreComments().catch(console.error),
+			postStore.loadMoreComments(activeAbortController?.signal).catch(console.error),
 		);
 	} else if (type === OsEventTypeList.SCROLL_TOP_EVENT) {
 		commentView.onScrollUp(comments, hasMoreComments, commentsLoading);
 	} else if (type === OsEventTypeList.DOUBLE_CLICK_EVENT) {
-		console.log('[Comments] Going back to detail');
+		activeAbortController?.abort();
+		activeAbortController = null;
 		commentView.reset();
 		uiManager.goBack();
 	}
@@ -434,19 +405,15 @@ function handleCommentsEvent(
 
 // ─── Loading animation helpers ──────────────────────────────────────────────
 
-/** Start a 500ms tick that increments animDots and calls animTickFn. Re-entrant: no-ops if already running. */
 function startLoadAnim(): void {
 	if (loadAnimInterval) return;
-	console.log(`[LoadAnim] startLoadAnim called, speed=${LOAD_ANIM_MS}ms`);
 	animDots = 3;
 	loadAnimInterval = setInterval(() => {
 		animDots = (animDots + 1) % 4;
-		console.log(`[LoadAnim] dots=${animDots}`);
 		animTickFn?.();
 	}, LOAD_ANIM_MS);
 }
 
-/** Stop the loading animation and reset the dots counter. */
 function stopLoadAnim(): void {
 	if (loadAnimInterval) {
 		clearInterval(loadAnimInterval);
@@ -457,58 +424,33 @@ function stopLoadAnim(): void {
 
 // ─── Render System ──────────────────────────────────────────────────────────
 
-function scheduleRender(
-	bridge: Bridge,
-	postStore: PostStore,
-	uiManager: UIManager,
-	feedView: FeedView,
-	detailView: DetailView,
-	commentView: CommentView,
-	menuView: MenuView,
-): void {
+function scheduleRender(bridge: Bridge, postStore: PostStore, uiManager: UIManager, views: Views): void {
 	if (isRendering) {
 		renderQueued = true;
 		return;
 	}
-	doRender(bridge, postStore, uiManager, feedView, detailView, commentView, menuView);
+	doRender(bridge, postStore, uiManager, views);
 }
 
-function doRender(
-	bridge: Bridge,
-	postStore: PostStore,
-	uiManager: UIManager,
-	feedView: FeedView,
-	detailView: DetailView,
-	commentView: CommentView,
-	menuView: MenuView,
-): void {
+function doRender(bridge: Bridge, postStore: PostStore, uiManager: UIManager, views: Views): void {
 	isRendering = true;
-	render(bridge, postStore, uiManager, feedView, detailView, commentView, menuView)
+	render(bridge, postStore, uiManager, views)
 		.catch((err) => console.error('[Render] Uncaught error:', err))
 		.finally(() => {
 			isRendering = false;
 			if (renderQueued) {
 				renderQueued = false;
-				doRender(bridge, postStore, uiManager, feedView, detailView, commentView, menuView);
+				doRender(bridge, postStore, uiManager, views);
 			}
 		});
 }
 
-async function render(
-	bridge: Bridge,
-	postStore: PostStore,
-	uiManager: UIManager,
-	feedView: FeedView,
-	detailView: DetailView,
-	commentView: CommentView,
-	menuView: MenuView,
-): Promise<void> {
+async function render(bridge: Bridge, postStore: PostStore, uiManager: UIManager, views: Views): Promise<void> {
 	const entry = uiManager.getCurrentEntry();
 	const view = entry.view;
 	const state = postStore.getState();
 	if (view !== 'menu') menuSelecting = false;
 
-	console.log(`[Render] view=${view} page=${state.currentPage} highlight=${state.highlightedIndex}`);
 	debugState({
 		view,
 		page: state.currentPage,
@@ -520,18 +462,23 @@ async function render(
 	try {
 		switch (view) {
 			case 'feed':
+				if (state.retryInSeconds !== null && state.retryInSeconds !== undefined) {
+					await showStatus(bridge, `Rate Limited. Retrying in ${state.retryInSeconds}s...`, false);
+					return;
+				}
 				if (state.error && state.posts.length === 0) {
 					await showStatus(bridge, `Error: ${state.error}`, true);
 					return;
 				}
-				if (state.posts.length === 0 && !state.error || state.loading) {
-					await showStatus(bridge, `Loading your feed${'.'.repeat(animDots)}`);
+				// Robust check for loading hangs: if we have posts and we're not loading, force transition to feed view.
+				if (state.posts.length === 0 || state.loading) {
+					await showStatus(bridge, `Loading your feed${'.'.repeat(animDots)}`, false);
 					return;
 				}
-				await feedView.render(
+				await views.feed.render(
 					state.posts,
 					state.currentPage,
-					state.highlightedIndex ?? 0,
+					state.highlightedIndex,
 					state.hasMore,
 					state.loadingMore,
 					animDots,
@@ -545,26 +492,25 @@ async function render(
 					uiManager.goBack();
 					return;
 				}
-				await detailView.render(post);
+				await views.detail.render(post, activeAbortController?.signal);
 				break;
 			}
 
 			case 'comments':
-				await commentView.render(state.comments, state.hasMoreComments, state.commentsLoading, animDots);
+				if (state.retryInSeconds !== null && state.retryInSeconds !== undefined) {
+					await showStatus(bridge, `Rate Limited. Retrying in ${state.retryInSeconds}s...`, false);
+					return;
+				}
+				await views.comment.render(state.comments, state.hasMoreComments, state.commentsLoading, animDots);
 				break;
 
 			case 'menu':
-				if (menuSelecting) break; // skip rebuild — we're transitioning away
-				menuSelecting = false;
-				await menuView.render(activeEndpoint);
+				if (menuSelecting) return;
+				await views.menu.render(activeEndpoint);
 				break;
 		}
 	} catch (e) {
 		console.error('[Render] Error:', e);
-		try {
-			await showStatus(bridge, `Error: ${e instanceof Error ? e.message : String(e)}`);
-		} catch {
-			/* ignore */
-		}
+		debugState({ error: String(e) });
 	}
 }

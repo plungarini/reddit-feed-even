@@ -32,6 +32,7 @@ export interface PostStoreState {
 	hasMoreComments: boolean;
 	commentsLoading: boolean;
 	expandedComments: Set<string>;
+	retryInSeconds: number | null;
 }
 
 export class PostStore {
@@ -49,6 +50,7 @@ export class PostStore {
 		hasMoreComments: false,
 		commentsLoading: false,
 		expandedComments: new Set(),
+		retryInSeconds: null,
 	};
 
 	private readonly listeners: PostStoreListener[] = [];
@@ -154,8 +156,30 @@ export class PostStore {
 			console.error('[PostStore] loadFeed error:', err);
 		} finally {
 			this.state.loading = false;
+			this.clearRetryCountdown();
 			this.notify();
 		}
+	}
+
+	startRetryCountdown(seconds: number): void {
+		this.state.retryInSeconds = Math.ceil(seconds);
+		this.notify();
+
+		const timer = setInterval(() => {
+			if (this.state.retryInSeconds !== null && this.state.retryInSeconds > 0) {
+				this.state.retryInSeconds--;
+				this.notify();
+			} else {
+				clearInterval(timer);
+				this.state.retryInSeconds = null;
+				this.notify();
+			}
+		}, 1000);
+	}
+
+	clearRetryCountdown(): void {
+		this.state.retryInSeconds = null;
+		this.notify();
 	}
 
 	async refresh(): Promise<void> {
@@ -165,11 +189,25 @@ export class PostStore {
 	}
 
 	/**
+	 * Synchronously prepares the store for a new feed load.
+	 * Clears existing posts and sets loading state instantly to prevent UI flashes.
+	 */
+	prepareForNewLoad(): void {
+		this.state.loading = true;
+		this.state.posts = [];
+		this.state.currentPage = 0;
+		this.state.highlightedIndex = 0;
+		this.state.error = null;
+		this.notify();
+	}
+
+	/**
 	 * Load feed with a different endpoint (transient — does not persist to config).
 	 * Always force-fetches fresh posts, bypassing the in-memory cache.
 	 */
 	async loadFeedByEndpoint(endpoint: import('../../core/types').FeedEndpoint): Promise<void> {
 		// New endpoint selection from menu should start fresh (no old subreddit/sort/time)
+		// We expect prepareForNewLoad to have been called by the caller if they want an instant reset.
 		await this.loadFeed({ endpoint, limit: 25 }, true);
 	}
 
@@ -262,7 +300,7 @@ export class PostStore {
 	// Comments
 	// ========================================================================
 
-	async loadComments(): Promise<void> {
+	async loadComments(signal?: AbortSignal): Promise<void> {
 		const post = this.getHighlightedPost();
 		if (!post) return;
 
@@ -275,9 +313,17 @@ export class PostStore {
 
 		try {
 			const comments = await this.client.fetchComments(post.id);
+			if (signal?.aborted) {
+				console.log('[PostStore] loadComments aborted');
+				return;
+			}
 			this.state.comments = comments;
 			this.state.hasMoreComments = comments.length === 10;
 		} catch (err) {
+			if (signal?.aborted) {
+				console.log('[PostStore] loadComments aborted (during error)');
+				return;
+			}
 			console.error('[PostStore] loadComments error:', err);
 			this.state.comments = [];
 		} finally {
@@ -286,7 +332,7 @@ export class PostStore {
 		}
 	}
 
-	async loadMoreComments(): Promise<void> {
+	async loadMoreComments(signal?: AbortSignal): Promise<void> {
 		const post = this.getHighlightedPost();
 		if (!post || !this.state.hasMoreComments || this.state.commentsLoading) return;
 
@@ -295,10 +341,18 @@ export class PostStore {
 
 		try {
 			const moreComments = await this.client.fetchComments(post.id);
+			if (signal?.aborted) {
+				console.log('[PostStore] loadMoreComments aborted');
+				return;
+			}
 			this.state.comments.push(...moreComments);
 			this.state.commentsPage++;
 			this.state.hasMoreComments = moreComments.length === 10;
 		} catch (err) {
+			if (signal?.aborted) {
+				console.log('[PostStore] loadMoreComments aborted (during error)');
+				return;
+			}
 			console.error('[PostStore] loadMoreComments error:', err);
 		} finally {
 			this.state.commentsLoading = false;

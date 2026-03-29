@@ -1,5 +1,5 @@
-const AUTH_KEY = 'reddit-client-auth';
-const CONFIG_KEY = 'reddit-client-config';
+const AUTH_KEY = 'reddit-feed-auth';
+const CONFIG_KEY = 'reddit-feed-config';
 const activeFilters = { log: true, warn: true, error: true };
 
 function getBaseUrl() {
@@ -260,7 +260,7 @@ function saveSettings() {
 	if (token && session) {
 		auth.tokenV2 = token;
 		auth.session = session;
-		auth.userAgent = 'reddit-client-even/1.0';
+		auth.userAgent = 'reddit-feed-even/1.0';
 		auth.savedAt = new Date().toISOString();
 	} else if (token || session) {
 		alert('Both token_v2 and reddit_session are required to authenticate.');
@@ -309,7 +309,7 @@ async function testAuth() {
 	try {
 		const headers = {
 			'X-Reddit-Token': token,
-			'X-Reddit-User-Agent': 'reddit-client-even/1.0',
+			'X-Reddit-User-Agent': 'reddit-feed-even/1.0',
 		};
 		if (session) headers['X-Reddit-Session'] = session;
 

@@ -6,6 +6,7 @@ import {
 } from '@evenrealities/even_hub_sdk';
 import { oneLine } from 'common-tags';
 import { RedditComment } from '../../core/types';
+import { BORDER_RADIUS } from '../../shared/constants';
 import { fmtScore, fmtTimeAgo, getStringChunks, normalizeWebText } from '../../shared/utils';
 
 // ─── Layout ───────────────────────────────────────────────────────────────────
@@ -14,7 +15,7 @@ const HEADER_H = 38;
 const BODY_Y = HEADER_H;
 const BODY_H = 288 - HEADER_H;
 const MAX_LINE_LEN = 55;
-const MAX_PAGE_CHARS = 2000;
+const MAX_PAGE_CHARS = 900;
 const COMMENTS_PER_PAGE = 10;
 
 // ─── Double-scroll config ─────────────────────────────────────────────────────
@@ -35,6 +36,7 @@ export class CommentView {
 	// Render state — set BEFORE the first await to prevent race conditions
 	private initialized = false;
 	private rendering = false; // render lock
+	private renderQueued = false;
 	private lastBodyContent = '';
 	private lastHeaderContent = '';
 
@@ -59,6 +61,7 @@ export class CommentView {
 		this.subreddit = '';
 		this.initialized = false;
 		this.rendering = false;
+		this.renderQueued = false;
 		this.lastBodyContent = '';
 		this.lastHeaderContent = '';
 		this.scrollHint = '';
@@ -136,9 +139,8 @@ export class CommentView {
 	// ─── Render ───────────────────────────────────────────────────────────────
 
 	async render(comments: RedditComment[], hasMore: boolean, loading: boolean, dotsCount = 0): Promise<void> {
-		// Drop concurrent renders — the last page-change call will re-render anyway
 		if (this.rendering) {
-			console.log('[CommentView] render skipped (locked)');
+			this.renderQueued = true;
 			return;
 		}
 		this.rendering = true;
@@ -178,6 +180,10 @@ export class CommentView {
 			}
 		} finally {
 			this.rendering = false;
+			if (this.renderQueued) {
+				this.renderQueued = false;
+				this.render(comments, hasMore, loading, dotsCount).catch(console.error);
+			}
 		}
 	}
 
@@ -194,13 +200,22 @@ export class CommentView {
 
 	private buildBody(topComments: RedditComment[], loading: boolean, dotsCount = 0): string {
 		if (loading && topComments.length === 0) return `Loading comments${'.'.repeat(dotsCount)}`;
-		if (topComments.length === 0) return 'No comments yet.';
+		if (topComments.length === 0) return 'Failed to load comments.';
 
 		const startIdx = this.pageIndex * COMMENTS_PER_PAGE;
 		const slice = topComments.slice(startIdx, startIdx + COMMENTS_PER_PAGE);
 		if (slice.length === 0) return 'No comments on this page.';
 
-		return slice.map((c) => formatBlock(c)).join('\n\n') + '\n';
+		let content = '';
+		const maxLen = this.initialized ? 1900 : 900;
+
+		for (const c of slice) {
+			const block = formatBlock(c);
+			if (content.length + block.length > maxLen) break;
+			content += block + '\n\n';
+		}
+
+		return content;
 	}
 
 	// ─── Private: SDK calls ───────────────────────────────────────────────────
@@ -225,12 +240,12 @@ export class CommentView {
 			height: BODY_H,
 			borderWidth: 1,
 			borderColor: 5,
-			borderRadius: 10,
+			borderRadius: BORDER_RADIUS,
 			paddingLength: 10,
 			containerID: 2,
 			containerName: 'cmt-body',
 			isEventCapture: 1,
-			content: body,
+			content: body.slice(0, 999),
 		});
 		try {
 			const ok = await this.bridge.rebuildPageContainer(
@@ -250,7 +265,7 @@ export class CommentView {
 					containerName: 'cmt-body',
 					contentOffset: 0,
 					contentLength: content.length,
-					content,
+					content: content.slice(0, 1999),
 				}),
 			);
 			if (!ok) console.warn('[CommentView] upgradeBody returned false');

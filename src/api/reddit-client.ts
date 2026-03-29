@@ -5,29 +5,26 @@
  * which sets Cookie headers server-side — the browser Fetch API cannot.
  */
 
-import { FeedConfig, RedditClientInterface, RedditComment, RedditListing, RedditPost } from '../core/types';
+import { ApiConfig, FeedConfig, RedditClientInterface, RedditComment, RedditListing, RedditPost } from '../core/types';
 import { AuthManager } from './auth-manager';
 import { RateLimiter } from './rate-limiter';
 
 export class RedditClient implements RedditClientInterface {
 	private readonly auth: AuthManager;
 	private readonly rateLimiter: RateLimiter;
+	private readonly apiConfig: ApiConfig;
 
 	/** Proxy base URL — auto-detects LAN IP or uses configured remote Worker. */
-	private get baseUrl(): string {
-		const config = this.auth.getConfig();
-		if (config.proxyUrl) {
-			// Ensure it ends with /api/reddit
-			const base = config.proxyUrl.endsWith('/') ? config.proxyUrl.slice(0, -1) : config.proxyUrl;
-			return `${base}/api/reddit`;
-		}
-		const host = globalThis?.location?.hostname || 'localhost';
-		return `http://${host}:3001/api/reddit`;
-	}
+	private onRateLimit?: (seconds: number) => void;
 
-	constructor(auth: AuthManager, rateLimiter: RateLimiter) {
+	constructor(auth: AuthManager, rateLimiter: RateLimiter, apiConfig: ApiConfig) {
 		this.auth = auth;
 		this.rateLimiter = rateLimiter;
+		this.apiConfig = apiConfig;
+	}
+
+	setRateLimitCallback(cb: (seconds: number) => void): void {
+		this.onRateLimit = cb;
 	}
 
 	async initialize(): Promise<void> {
@@ -59,7 +56,7 @@ export class RedditClient implements RedditClientInterface {
 		return headers;
 	}
 
-	private async get<T>(path: string, params: Record<string, string> = {}): Promise<T> {
+	private async get<T>(path: string, params: Record<string, string> = {}, isRetry = false): Promise<T> {
 		await this.rateLimiter.throttle();
 
 		const url = new URL(`${this.baseUrl}${path}`);
@@ -67,7 +64,7 @@ export class RedditClient implements RedditClientInterface {
 			if (value !== undefined && value !== null) url.searchParams.set(key, value);
 		}
 
-		console.log('[RedditClient] GET', url.toString());
+		console.log(`[RedditClient] GET ${url.pathname}${url.search} (retry=${isRetry})`);
 
 		let response: Response;
 		try {
@@ -78,21 +75,38 @@ export class RedditClient implements RedditClientInterface {
 		} catch (err) {
 			const name = err instanceof Error ? err.name : '';
 			if (name === 'TimeoutError' || name === 'AbortError') {
-				throw new Error(`Request timed out (15s). Is the proxy server reachable? URL: ${url.toString()}`);
+				throw new Error(`Request timed out (15s). URL: ${url.pathname}`);
 			}
-			throw new Error(`Network error: ${err instanceof Error ? err.message : String(err)} — URL: ${url.toString()}`);
+			throw new Error(`Network error: ${err instanceof Error ? err.message : String(err)}`);
 		}
 
 		this.rateLimiter.updateFromHeaders(response.headers);
 
 		if (!response.ok) {
+			if (response.status === 429 && !isRetry) {
+				const resetHeader = response.headers.get('x-ratelimit-reset') || response.headers.get('Retry-After');
+				const resetSeconds = resetHeader ? Number.parseInt(resetHeader, 10) : 60;
+
+				if (resetSeconds <= 120) {
+					console.warn(`[RedditClient] 429 Rate Limit. Waiting ${resetSeconds}s before retry...`);
+					this.onRateLimit?.(resetSeconds);
+					await new Promise((resolve) => setTimeout(resolve, resetSeconds * 1000 + 500));
+					return this.get<T>(path, params, true);
+				}
+			}
+
 			if (response.status === 401 || response.status === 403) {
-				throw new Error(`Authentication failed (${response.status}). Check your Reddit credentials.`);
+				throw new Error(`Authentication failed (${response.status}). Check Reddit tokens.`);
 			}
 			throw new Error(`Reddit API error: ${response.status} ${response.statusText}`);
 		}
 
 		return response.json() as T;
+	}
+
+	private get baseUrl(): string {
+		const base = this.apiConfig.baseUrl.endsWith('/') ? this.apiConfig.baseUrl.slice(0, -1) : this.apiConfig.baseUrl;
+		return `${base}/api/reddit`;
 	}
 
 	// ========================================================================

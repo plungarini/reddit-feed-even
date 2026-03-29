@@ -2,7 +2,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [ main, master, develop ]
+    branches: [main, master, develop]
   workflow_dispatch:
 
 permissions:
@@ -11,7 +11,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: "pages"
+  group: 'pages'
   cancel-in-progress: false
 
 env:
@@ -59,7 +59,7 @@ jobs:
 
       - name: Output URL
         run: |
-          echo "🚀 Production: https://${{ github.repository_owner }}.github.io/reddit-client-even/"
+          echo "🚀 Production: https://${{ github.repository_owner }}.github.io/reddit-feed-even/"
 
   # Deploy staging from develop branch
   deploy-staging:
@@ -103,4 +103,4 @@ jobs:
 
       - name: Output URL
         run: |
-          echo "🧪 Staging: https://${{ github.repository_owner }}.github.io/reddit-client-even/staging/"
+          echo "🧪 Staging: https://${{ github.repository_owner }}.github.io/reddit-feed-even/staging/"

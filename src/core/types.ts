@@ -86,6 +86,7 @@ export interface AppConfig {
   auth: AuthConfig;
   feed: FeedConfig;
   cache: CacheConfig;
+  api: ApiConfig;
 }
 
 export interface AuthConfig {
@@ -100,13 +101,17 @@ export interface CacheConfig {
   durationMs: number;
 }
 
+export interface ApiConfig {
+  baseUrl: string;
+}
+
 
 
 // ============================================================================
 // UI Types
 // ============================================================================
 
-export type ViewMode = 'feed' | 'detail' | 'comments' | 'menu';
+export type ViewMode = 'feed' | 'detail' | 'comments' | 'menu' | 'close-confirm';
 
 export interface RateLimitState {
   used: number;
