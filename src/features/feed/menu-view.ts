@@ -77,7 +77,7 @@ export class MenuView {
 	private buildList(currentEndpoint: FeedEndpoint): ListContainerProperty {
 		const itemNames = Object.entries(ENDPOINTS).map(([key, value]) => {
 			const active = key === currentEndpoint;
-			const indicator = active ? '>  ' : '   ';
+			const indicator = active ? '>  ' : '    ';
 			return `${indicator}${value.name}  -  ${value.description}`;
 		});
 

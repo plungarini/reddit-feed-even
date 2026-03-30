@@ -6,6 +6,7 @@
  */
 
 import { ApiConfig, FeedConfig, RedditClientInterface, RedditComment, RedditListing, RedditPost } from '../core/types';
+import { MAX_UPGRADE_LENGTH } from '../shared/constants';
 import { AuthManager } from './auth-manager';
 import { RateLimiter } from './rate-limiter';
 
@@ -85,7 +86,7 @@ export class RedditClient implements RedditClientInterface {
 		if (!response.ok) {
 			if (response.status === 429 && !isRetry) {
 				const resetHeader = response.headers.get('x-ratelimit-reset') || response.headers.get('Retry-After');
-				const resetSeconds = resetHeader ? Number.parseInt(resetHeader, 10) : 60;
+				const resetSeconds = (resetHeader ? Number.parseInt(resetHeader, 10) : 60) + 5; // +5s safety buffer
 
 				if (resetSeconds <= 120) {
 					console.warn(`[RedditClient] 429 Rate Limit. Waiting ${resetSeconds}s before retry...`);
@@ -180,7 +181,7 @@ export class RedditClient implements RedditClientInterface {
 		for (const child of children) {
 			if (child.kind !== 't1') continue;
 			if (child.data.author === '[deleted]' || child.data.body === '[deleted]') continue;
-			if (child.data.body && child.data.body.length >= 1900) continue;
+			if (child.data.body && child.data.body.length >= MAX_UPGRADE_LENGTH) continue;
 
 			result.push({
 				id: child.data.id,

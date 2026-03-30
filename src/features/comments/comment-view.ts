@@ -6,7 +6,7 @@ import {
 } from '@evenrealities/even_hub_sdk';
 import { oneLine } from 'common-tags';
 import { RedditComment } from '../../core/types';
-import { BORDER_RADIUS } from '../../shared/constants';
+import { BORDER_RADIUS, MAX_CREATE_LENGTH, MAX_UPGRADE_LENGTH } from '../../shared/constants';
 import { fmtScore, fmtTimeAgo, getStringChunks, normalizeWebText } from '../../shared/utils';
 
 // ─── Layout ───────────────────────────────────────────────────────────────────
@@ -207,7 +207,7 @@ export class CommentView {
 		if (slice.length === 0) return 'No comments on this page.';
 
 		let content = '';
-		const maxLen = this.initialized ? 1900 : 900;
+		const maxLen = this.initialized ? MAX_UPGRADE_LENGTH : MAX_CREATE_LENGTH;
 
 		for (const c of slice) {
 			const block = formatBlock(c);
