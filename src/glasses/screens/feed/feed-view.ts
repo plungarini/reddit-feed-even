@@ -13,8 +13,9 @@ export const FOOTER_CONTAINER_ID = POSTS_PER_PAGE + 1; // 5
 
 const POST_H = 64;
 const WIDTH = 576;
+const HEIGHT = 288;
 const FOOTER_Y = POSTS_PER_PAGE * POST_H;
-const FOOTER_H = 288;
+const FOOTER_H = 32;
 const MAX_POST_TITLE_LEN = 56;
 
 // ─── Double-scroll config ─────────────────────────────────────────────────────
@@ -148,6 +149,7 @@ export class FeedView {
 			if (!ok) {
 				throw new Error('rebuildPageContainer returned false (feed)');
 			}
+
 			// After a full rebuild, if primed, re-render the footer hint so it survives the rebuild
 			if (this.scrollPrimed !== 'none') {
 				const hintText = buildFooter(false, true, dotsCount);
@@ -172,7 +174,19 @@ export class FeedView {
 		const pagePosts = posts.slice(startIdx, startIdx + POSTS_PER_PAGE);
 		const totalPages = Math.max(1, Math.ceil(posts.length / POSTS_PER_PAGE));
 
-		const containers: TextContainerProperty[] = [];
+		const containers: TextContainerProperty[] = [
+			// ── Invisible Event Shield ─────────────────────────────────────────
+			new TextContainerProperty({
+				xPosition: 0,
+				yPosition: 0,
+				width: WIDTH,
+				height: HEIGHT,
+				isEventCapture: loadingMore ? 0 : 1,
+				content: '',
+				containerID: POSTS_PER_PAGE + 2,
+				containerName: 'event_shield',
+			}),
+		];
 
 		// ── Post rows (0 – 3) ────────────────────────────────────────────────────
 		for (let i = 0; i < POSTS_PER_PAGE; i++) {
@@ -214,17 +228,6 @@ export class FeedView {
 				containerName: 'footer',
 				isEventCapture: 0,
 				content: footerContent,
-			}),
-			// ── Invisible Event Shield ─────────────────────────────────────────
-			new TextContainerProperty({
-				xPosition: 0,
-				yPosition: 0,
-				width: WIDTH,
-				height: 288,
-				isEventCapture: loadingMore ? 0 : 1,
-				content: '',
-				containerID: POSTS_PER_PAGE + 2,
-				containerName: 'event_shield',
 			}),
 		);
 
@@ -297,7 +300,7 @@ function formatPost(post: CachedPost): string {
 }
 
 function buildFooter(loadingMore: boolean, primed: boolean, dotsCount = 3): string {
-	if (loadingMore) return `╭──  Loading feed${'…'.slice(0, dotsCount > 0 ? 1 : 0)}  ──╮`;
+	if (loadingMore) return `╭──  Loading feed${'.'.repeat(dotsCount)}  ──╮`;
 	if (primed) return `╭──  ↓ again → next page  ──╮`;
 	return `╭──  Scroll down to update  ──╮`;
 }
