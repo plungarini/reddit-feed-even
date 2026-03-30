@@ -1,15 +1,8 @@
 @import 'tailwindcss';
+@import 'even-toolkit/web/theme-light.css';
+@import 'even-toolkit/web/typography.css';
+@import 'even-toolkit/web/utilities.css';
 
-/* ── Even Toolkit design tokens ────────────────────────────────────────────
-   even-toolkit's package.json exports field has no "style" condition, so
-   @import "even-toolkit/web/theme/..." is blocked by Vite's resolver.
-   Use relative paths to the actual files instead.                         */
-@import '../../node_modules/even-toolkit/web/theme/tokens-light.css';
-@import '../../node_modules/even-toolkit/web/theme/typography.css';
-@import '../../node_modules/even-toolkit/web/theme/utilities.css';
-
-/* Scan compiled toolkit JS so Tailwind doesn't purge class names used
-   inside even-toolkit components at build time.                           */
 @source "../../node_modules/even-toolkit/dist/web/**/*.js";
 
 @theme inline {
