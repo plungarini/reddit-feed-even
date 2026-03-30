@@ -17,6 +17,14 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
 	);
 }
 
+function clearAll() {
+	if (confirm('Reset all settings and auth data?')) {
+		localStorage.removeItem(AUTH_KEY);
+		localStorage.removeItem(CONFIG_KEY);
+		globalThis.location.reload();
+	}
+}
+
 export function SettingsView() {
 	const [token, setToken] = useState('');
 	const [session, setSession] = useState('');
@@ -56,14 +64,6 @@ export function SettingsView() {
 		localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
 		setToast('Saved! Reloading…');
 		setTimeout(() => globalThis.location.reload(), 800);
-	}
-
-	function clearAll() {
-		if (confirm('Reset all settings and auth data?')) {
-			localStorage.removeItem(AUTH_KEY);
-			localStorage.removeItem(CONFIG_KEY);
-			globalThis.location.reload();
-		}
 	}
 
 	return (
