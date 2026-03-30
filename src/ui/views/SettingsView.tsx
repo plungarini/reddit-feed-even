@@ -1,6 +1,8 @@
 import { Button, Card, Input, SectionHeader, Select, SettingsGroup, Toast, Toggle } from 'even-toolkit/web';
 import React, { useEffect, useState } from 'react';
+import { clearPreviewCache, PREVIEW_CACHE_CONFIG, setPreviewCacheTtl } from '../../api/preview-cache';
 import { ENDPOINTS } from '../../core/config';
+import { clamp } from '../../shared/utils';
 
 const AUTH_KEY = 'reddit-feed-auth';
 const CONFIG_KEY = 'reddit-feed-config';
@@ -23,6 +25,7 @@ function clearAll() {
 	if (confirm('Reset all settings and auth data?')) {
 		localStorage.removeItem(AUTH_KEY);
 		localStorage.removeItem(CONFIG_KEY);
+		clearPreviewCache();
 		globalThis.location.reload();
 	}
 }
@@ -33,6 +36,11 @@ export function SettingsView() {
 	const [proxy, setProxy] = useState(PROXY_URL);
 	const [feed, setFeed] = useState('hot');
 	const [cacheMins, setCacheMins] = useState('5');
+
+	// Cache constraints
+	const MIN_CACHE_MINUTES = Math.max(1, Math.floor(PREVIEW_CACHE_CONFIG.MIN_TTL_MS / 60000));
+	const MAX_CACHE_MINUTES = Math.floor(PREVIEW_CACHE_CONFIG.MAX_TTL_MS / 60000);
+
 	const [showMediaOnly, setShowMediaOnly] = useState(false);
 	const [toast, setToast] = useState('');
 	const [userAgent, setUserAgent] = useState('reddit-feed-even/1.0');
@@ -47,7 +55,10 @@ export function SettingsView() {
 			if (auth.userAgent) setUserAgent(auth.userAgent || 'reddit-feed-even/1.0');
 			if (config.feed?.endpoint) setFeed(config.feed.endpoint);
 			if (config.feed?.showMediaOnly !== undefined) setShowMediaOnly(config.feed.showMediaOnly);
-			if (config.cache?.durationMs) setCacheMins(String(Math.max(1, Math.floor(config.cache.durationMs / 60000))));
+			if (config.cache?.durationMs) {
+				const mins = Math.floor(config.cache.durationMs / 60000);
+				setCacheMins(String(clamp(mins, MIN_CACHE_MINUTES, MAX_CACHE_MINUTES)));
+			}
 		} catch (e) {
 			console.warn('[Settings] Failed to load:', e);
 		}
@@ -60,10 +71,17 @@ export function SettingsView() {
 			proxyUrl: proxy.trim() || PROXY_URL,
 			userAgent: userAgent.trim() || 'reddit-feed-even/1.0',
 		};
+		const cacheDurationMs = clamp(Number.parseInt(cacheMins, 10) || 5, MIN_CACHE_MINUTES, MAX_CACHE_MINUTES) * 60 * 1000;
 		const config = {
 			feed: { endpoint: feed, limit: 25, showMediaOnly },
-			cache: { durationMs: (Number.parseInt(cacheMins, 10) || 5) * 60 * 1000 },
+			cache: {
+				durationMs: cacheDurationMs,
+			},
 		};
+
+		// Sync link preview cache TTL with feed cache duration
+		setPreviewCacheTtl(cacheDurationMs);
+
 		localStorage.setItem(AUTH_KEY, JSON.stringify(auth));
 		localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
 		setToast('Saved! Reloading…');
@@ -109,15 +127,21 @@ export function SettingsView() {
 						</Field>
 						<Field
 							label="Cache duration (minutes)"
-							hint="Posts are reused for this long before re-fetching. Minimum 1 minute."
+							hint={`Posts and link previews are cached for this duration. Min: ${MIN_CACHE_MINUTES}m, Max: ${MAX_CACHE_MINUTES}m (${Math.floor(MAX_CACHE_MINUTES / 60)}h).`}
 						>
 							<Input
 								type="number"
-								min="1"
-								max="60"
+								min={MIN_CACHE_MINUTES}
+								max={MAX_CACHE_MINUTES}
 								placeholder="5"
 								value={cacheMins}
-								onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCacheMins(e.target.value)}
+								onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+									const value = e.target.value;
+									// Allow empty or valid numbers within range
+									if (value === '' || (/^\d+$/.test(value) && parseInt(value, 10) >= MIN_CACHE_MINUTES && parseInt(value, 10) <= MAX_CACHE_MINUTES)) {
+										setCacheMins(value);
+									}
+								}}
 							/>
 						</Field>
 						<Field label="Show posts with media-only" hint="Show posts that have media, even without body text.">
