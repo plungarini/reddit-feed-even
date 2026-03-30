@@ -228,7 +228,7 @@ export class RedditClient implements RedditClientInterface {
 			permalink: raw.permalink,
 			selftext: raw.selftext || undefined,
 			author: raw.author,
-			score: raw.score || raw.data.ups,
+			score: raw.score || raw.ups,
 			upvoteRatio: raw.upvote_ratio,
 			numComments: raw.num_comments,
 			createdUtc: raw.created_utc,
