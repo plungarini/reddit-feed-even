@@ -135,8 +135,6 @@ export class DetailView {
 	async updateContent(post: CachedPost, mode: 'contentLen' | 'update', signal?: AbortSignal) {
 		if (signal?.aborted) return;
 
-		// If it's a link and we already have it in cache, and we are in 'update' mode, we can skip if we want,
-		// but buildContent handles the cache check, so we just check if it's actually changing anything.
 		const { content } = await this.buildContent(post, mode);
 		if (signal?.aborted) {
 			console.log('[DetailView] updateContent aborted after buildContent');
@@ -167,7 +165,7 @@ export class DetailView {
 		post: CachedPost,
 		mode: 'create' | 'contentLen' | 'update',
 	): Promise<{ content: string; trimmed: boolean }> {
-		const CHARS_LIMIT = ['update', 'contentLen'].includes(mode) ? 2000 : 1000;
+		const CHARS_LIMIT = ['update', 'contentLen'].includes(mode) ? 1950 : 950;
 
 		let totalChars = 0;
 		let trimmed = false;
@@ -176,37 +174,7 @@ export class DetailView {
 		lines.push(post.title);
 		totalChars += post.title.length;
 
-		const attachmentLines = [''];
-		if (post.contentType !== 'self') {
-			if (post.contentType === 'link') {
-				const cached = this.linkPreviewCache.get(post.id);
-				if (cached) {
-					attachmentLines.push(...cached);
-				} else if (mode === 'update') {
-					if (this.fetchingPostId === post.id) {
-						// Wait for existing fetch or just show loading
-						attachmentLines.push(`╭─────────────────────────╮\n│    Loading Link Preview…\n╰─────────────────────────╯`);
-					} else {
-						this.fetchingPostId = post.id;
-						try {
-							const linkLines = await buildLinkPreview(post.url, this.proxyUrl);
-							this.linkPreviewCache.set(post.id, linkLines);
-							attachmentLines.push(...linkLines);
-						} catch (e) {
-							console.error('[DetailView] Failed to build link preview:', e);
-							attachmentLines.push(`╭─────────────────────────╮\n│    Link Preview Failed\n╰─────────────────────────╯`);
-						} finally {
-							this.fetchingPostId = null;
-						}
-					}
-				} else {
-					attachmentLines.push(`╭─────────────────────────╮\n│    Loading Link Preview…\n╰─────────────────────────╯`);
-				}
-			} else {
-				const contentLabel = `╭─────────────────────────╮\n│    ${capitalizeText(post.contentType)} Attachment\n╰─────────────────────────╯`;
-				attachmentLines.push(contentLabel);
-			}
-		}
+		const attachmentLines = await this.buildAttachments(post, mode);
 
 		const attachmentContent = attachmentLines.join('\n');
 		const footerContent = `\nu/${post.author} • ${fmtTimeAgo(post.createdUtc)}\n`;
@@ -224,6 +192,42 @@ export class DetailView {
 		lines.push(attachmentContent, footerContent);
 
 		return { content: lines.join('\n'), trimmed };
+	}
+
+	private async buildAttachments(post: CachedPost, mode: 'create' | 'contentLen' | 'update'): Promise<string[]> {
+		if (post.contentType === 'self') return [];
+
+		const attachmentLines = [''];
+		if (post.contentType === 'link') {
+			const cached = this.linkPreviewCache.get(post.id);
+			if (cached) {
+				attachmentLines.push(...cached);
+			} else if (mode === 'update') {
+				if (this.fetchingPostId === post.id) {
+					// Wait for existing fetch or just show loading
+					attachmentLines.push(`╭─────────────────────────╮\n│    Loading Link Preview…\n╰─────────────────────────╯`);
+				} else {
+					this.fetchingPostId = post.id;
+					try {
+						const linkLines = await buildLinkPreview(post.url, this.proxyUrl);
+						this.linkPreviewCache.set(post.id, linkLines);
+						attachmentLines.push(...linkLines);
+					} catch (e) {
+						console.error('[DetailView] Failed to build link preview:', e);
+						attachmentLines.push(`╭─────────────────────────╮\n│    Link Preview Failed\n╰─────────────────────────╯`);
+					} finally {
+						this.fetchingPostId = null;
+					}
+				}
+			} else {
+				attachmentLines.push(`╭─────────────────────────╮\n│    Loading Link Preview…\n╰─────────────────────────╯`);
+			}
+		} else {
+			const contentLabel = `╭─────────────────────────╮\n│    ${capitalizeText(post.contentType)} Attachment\n╰─────────────────────────╯`;
+			attachmentLines.push(contentLabel);
+		}
+
+		return attachmentLines;
 	}
 }
 
