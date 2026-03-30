@@ -126,9 +126,13 @@ export class RedditClient implements RedditClientInterface {
 			path = `/${config.endpoint}.json`;
 		}
 
+		const showMediaOnly = config.showMediaOnly;
+		const normLimit = Math.min(500, Math.min(100, config.limit) + (showMediaOnly ? 0 : 100));
+
 		const params: Record<string, string> = {
-			limit: String(Math.min(config.limit, 100)),
+			limit: String(normLimit),
 		};
+
 		if (after) params.after = after;
 		if (
 			config.time &&
@@ -141,9 +145,17 @@ export class RedditClient implements RedditClientInterface {
 		}
 
 		const listing = await this.get<RedditListing<any>>(path, params);
-		const posts = listing.data.children
+		let posts = listing.data.children
 			.filter((child) => child.kind === 't3')
 			.map((child) => this.normalizePost(child.data));
+
+		if (!showMediaOnly) {
+			posts = posts.filter((post) => {
+				const isMedia = post.contentType === 'image' || post.contentType === 'video' || post.contentType === 'gallery';
+				const hasNoText = !post.selftext || post.selftext.trim().length === 0;
+				return !(isMedia && hasNoText);
+			});
+		}
 
 		return { posts, after: listing.data.after };
 	}

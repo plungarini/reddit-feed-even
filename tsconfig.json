@@ -10,6 +10,7 @@
 		"sourceMap": true,
 		"strict": true,
 		"target": "ES2022",
+		"jsx": "react-jsx",
 		"types": ["vite/client", "node", "@cloudflare/workers-types"]
 	},
 	"exclude": ["node_modules", "dist"],
