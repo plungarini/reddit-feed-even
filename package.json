@@ -9,7 +9,7 @@
 	},
 	"description": "A full-featured Reddit client for Even Realities G2 smart glasses",
 	"devDependencies": {
-		"@cloudflare/workers-types": "^4.20260317.1",
+		"@cloudflare/workers-types": "^4.20260329.1",
 		"@evenrealities/evenhub-cli": "^0.1.11",
 		"@evenrealities/evenhub-simulator": "^0.6.2",
 		"@types/common-tags": "^1.8.4",
@@ -39,7 +39,7 @@
 		"build": "tsc && vite build",
 		"dev": "concurrently -n QR,VITE,SERVER -c cyan,green,yellow \"npm run qr\" \"vite --host 0.0.0.0 --port 5173\" \"npm run server\"",
 		"pack": "npm run build && evenhub pack app.json dist -o reddit-feed.ehpk",
-		"qr": "evenhub qr --url http://192.168.1.102:5173",
+		"qr": "node scripts/qr.mjs",
 		"server": "wrangler dev --port 3001",
 		"typecheck": "tsc --noEmit"
 	},
