@@ -6,6 +6,8 @@
  */
 
 import { ApiConfig, FeedConfig, RedditClientInterface, RedditComment, RedditListing, RedditPost } from '../core/types';
+import { MAX_UPGRADE_LENGTH } from '../shared/constants';
+import { clamp } from '../shared/utils';
 import { AuthManager } from './auth-manager';
 import { RateLimiter } from './rate-limiter';
 
@@ -64,28 +66,34 @@ export class RedditClient implements RedditClientInterface {
 			if (value !== undefined && value !== null) url.searchParams.set(key, value);
 		}
 
-		console.log(`[RedditClient] GET ${url.pathname}${url.search} (retry=${isRetry})`);
+		console.log(`[RedditClient] GET ${url.toString()} (retry=${isRetry})`);
 
 		let response: Response;
 		try {
 			response = await fetch(url.toString(), {
 				headers: this.proxyHeaders(),
-				signal: AbortSignal.timeout(15_000),
+				signal: AbortSignal.timeout(30_000),
 			});
 		} catch (err) {
 			const name = err instanceof Error ? err.name : '';
+			const errorDetails = err instanceof Error ? err : new Error(String(err));
 			if (name === 'TimeoutError' || name === 'AbortError') {
-				throw new Error(`Request timed out (15s). URL: ${url.pathname}`);
+				console.error('[RedditClient] Request timeout:', url.toString(), errorDetails);
+				throw new Error(`Request timed out (30s). URL: ${url.pathname}`);
 			}
+			console.error('[RedditClient] Network error:', url.toString(), errorDetails);
 			throw new Error(`Network error: ${err instanceof Error ? err.message : String(err)}`);
 		}
 
 		this.rateLimiter.updateFromHeaders(response.headers);
 
 		if (!response.ok) {
+			// Clone response for potential error logging before we retry or throw
+			const responseClone = response.clone();
+			
 			if (response.status === 429 && !isRetry) {
 				const resetHeader = response.headers.get('x-ratelimit-reset') || response.headers.get('Retry-After');
-				const resetSeconds = resetHeader ? Number.parseInt(resetHeader, 10) : 60;
+				const resetSeconds = (resetHeader ? Number.parseInt(resetHeader, 10) : 60) + 5; // +5s safety buffer
 
 				if (resetSeconds <= 120) {
 					console.warn(`[RedditClient] 429 Rate Limit. Waiting ${resetSeconds}s before retry...`);
@@ -96,9 +104,15 @@ export class RedditClient implements RedditClientInterface {
 			}
 
 			if (response.status === 401 || response.status === 403) {
-				throw new Error(`Authentication failed (${response.status}). Check Reddit tokens.`);
+				const err = new Error(`Authentication failed (${response.status}). Check Reddit tokens.`);
+				console.error('[RedditClient] Auth error response:', responseClone);
+				throw err;
 			}
-			throw new Error(`Reddit API error: ${response.status} ${response.statusText}`);
+			
+			// Log detailed error before throwing
+			const errorMsg = `Reddit API error: ${response.status} ${response.statusText}`;
+			console.error('[RedditClient] Error response:', responseClone);
+			throw new Error(errorMsg);
 		}
 
 		return response.json() as T;
@@ -126,9 +140,14 @@ export class RedditClient implements RedditClientInterface {
 			path = `/${config.endpoint}.json`;
 		}
 
+		const showMediaOnly = config.showMediaOnly;
+		const clampedLimit = clamp(config.limit, 25, 100);
+		const normLimit = clampedLimit + (showMediaOnly ? 0 : clampedLimit * 2);
+
 		const params: Record<string, string> = {
-			limit: String(Math.min(config.limit, 100)),
+			limit: String(normLimit),
 		};
+
 		if (after) params.after = after;
 		if (
 			config.time &&
@@ -141,9 +160,17 @@ export class RedditClient implements RedditClientInterface {
 		}
 
 		const listing = await this.get<RedditListing<any>>(path, params);
-		const posts = listing.data.children
+		let posts = listing.data.children
 			.filter((child) => child.kind === 't3')
 			.map((child) => this.normalizePost(child.data));
+
+		if (!showMediaOnly) {
+			posts = posts.filter((post) => {
+				const isMedia = post.contentType === 'image' || post.contentType === 'video' || post.contentType === 'gallery';
+				const hasNoText = !post.selftext || post.selftext.trim().length === 0;
+				return !(isMedia && hasNoText);
+			});
+		}
 
 		return { posts, after: listing.data.after };
 	}
@@ -153,26 +180,28 @@ export class RedditClient implements RedditClientInterface {
 	// ========================================================================
 
 	async fetchComments(postId: string, limit: number = 100): Promise<RedditComment[]> {
+		const normLimit = Math.min(limit, 100);
 		const response = await this.get<[unknown, RedditListing<any>]>(`/comments/${postId}.json`, {
-			limit: String(limit),
+			limit: String(normLimit + 10),
 			depth: '1',
 			sort: 'top',
 		});
-		return this.flattenComments(response[1].data.children, 2);
+		return this.flattenComments(response[1].data.children, normLimit, 2);
 	}
 
-	private flattenComments(children: any[], maxDepth: number = 2, depth: number = 0): RedditComment[] {
+	private flattenComments(children: any[], limit: number, maxDepth: number = 2, depth: number = 0): RedditComment[] {
 		const result: RedditComment[] = [];
 
 		for (const child of children) {
 			if (child.kind !== 't1') continue;
 			if (child.data.author === '[deleted]' || child.data.body === '[deleted]') continue;
+			if (child.data.body && child.data.body.length >= MAX_UPGRADE_LENGTH) continue;
 
 			result.push({
 				id: child.data.id,
 				author: child.data.author,
 				body: child.data.body,
-				score: child.data.score,
+				score: child.data.score || child.data.ups,
 				createdUtc: child.data.created_utc,
 			});
 
@@ -182,7 +211,7 @@ export class RedditClient implements RedditClientInterface {
 			}
 		}
 
-		return result.sort((a, b) => b.score - a.score);
+		return result.slice(0, limit).sort((a, b) => b.score - a.score);
 	}
 
 	// ========================================================================
@@ -214,7 +243,7 @@ export class RedditClient implements RedditClientInterface {
 			permalink: raw.permalink,
 			selftext: raw.selftext || undefined,
 			author: raw.author,
-			score: raw.score,
+			score: raw.score || raw.ups,
 			upvoteRatio: raw.upvote_ratio,
 			numComments: raw.num_comments,
 			createdUtc: raw.created_utc,

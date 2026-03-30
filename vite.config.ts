@@ -1,16 +1,18 @@
+import tailwindcss from '@tailwindcss/vite';
+import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 
+const getBaseUrl = (command: string) => {
+	if (command === 'serve') return './';
+	if (process.env.GITHUB_PAGES === 'true') {
+		return process.env.STAGING === 'true' ? '/reddit-feed-even/staging/' : '/reddit-feed-even/';
+	}
+	return './';
+};
+
 export default defineConfig(({ command }) => ({
-	// Use absolute root for dev (Even Hub WebView needs absolute paths)
-	// Use repo-relative path for GitHub Pages builds (Production vs Staging)
-	base:
-		command === 'serve'
-			? './'
-			: process.env.GITHUB_PAGES === 'true'
-				? process.env.STAGING === 'true'
-					? '/reddit-feed-even/staging/'
-					: '/reddit-feed-even/'
-				: './',
+	plugins: [react(), tailwindcss()],
+	base: getBaseUrl(command),
 	server: {
 		host: true,
 		port: 5173,
@@ -21,8 +23,10 @@ export default defineConfig(({ command }) => ({
 		target: 'es2022',
 		rollupOptions: {
 			output: {
-				manualChunks: {
-					'even-hub': ['@evenrealities/even_hub_sdk'],
+				manualChunks(id) {
+					if (id.includes('@evenrealities')) {
+						return 'even-hub';
+					}
 				},
 			},
 		},

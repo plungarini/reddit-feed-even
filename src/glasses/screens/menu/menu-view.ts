@@ -18,24 +18,8 @@ import {
 	RebuildPageContainer,
 	TextContainerProperty,
 } from '@evenrealities/even_hub_sdk';
-import { FeedEndpoint } from '../../core/types';
-
-export interface MenuItem {
-	id: FeedEndpoint;
-	label: string;
-	desc: string;
-}
-
-export const FEED_ITEMS: MenuItem[] = [
-	{ id: 'hot', label: 'Hot', desc: 'Trending now' },
-	{ id: 'best', label: 'Best', desc: 'Personalized feed' },
-	{ id: 'new', label: 'New', desc: 'Latest posts' },
-	{ id: 'rising', label: 'Rising', desc: 'Gaining popularity' },
-	{ id: 'top', label: 'Top', desc: 'Highest rated' },
-	{ id: 'controversial', label: 'Controversial', desc: 'Most debated' },
-	{ id: 'r/popular', label: 'Popular', desc: 'Across Reddit' },
-	{ id: 'r/all', label: 'All', desc: 'Everything' },
-];
+import { ENDPOINTS } from '../../../core/config';
+import { FeedEndpoint } from '../../../core/types';
 
 const WIDTH = 576;
 
@@ -74,12 +58,12 @@ export class MenuView {
 	}
 
 	private buildHeader(): TextContainerProperty {
-		const text = '╭────  Select your Feed  ────╮';
+		const text = '╭───────  Select your Feed  ───────╮';
 		const textWidth = text.length * 12;
 		return new TextContainerProperty({
 			xPosition: Math.floor((WIDTH - textWidth) / 2),
 			yPosition: HEADER_Y,
-			width: textWidth + 20,
+			width: WIDTH,
 			height: HEADER_H,
 			borderWidth: 0,
 			paddingLength: 5,
@@ -91,15 +75,15 @@ export class MenuView {
 	}
 
 	private buildList(currentEndpoint: FeedEndpoint): ListContainerProperty {
-		const itemNames = FEED_ITEMS.map((item) => {
-			const active = item.id === currentEndpoint;
-			const indicator = active ? '>  ' : '   ';
-			return `${indicator}${item.label}  -  ${item.desc}`;
+		const itemNames = Object.entries(ENDPOINTS).map(([key, value]) => {
+			const active = key === currentEndpoint;
+			const indicator = active ? '>  ' : '    ';
+			return `${indicator}${value.name}  -  ${value.description}`;
 		});
 
-		const OFFSET = 120;
+		const OFFSET = 60;
 		return new ListContainerProperty({
-			xPosition: OFFSET + 5,
+			xPosition: 90,
 			yPosition: LIST_Y,
 			width: WIDTH - OFFSET * 2,
 			height: LIST_H,
@@ -109,7 +93,7 @@ export class MenuView {
 			containerName: 'menu-list',
 			isEventCapture: 1,
 			itemContainer: new ListItemContainerProperty({
-				itemCount: FEED_ITEMS.length,
+				itemCount: itemNames.length,
 				itemWidth: WIDTH - OFFSET * 2,
 				isItemSelectBorderEn: 1,
 				itemName: itemNames,

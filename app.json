@@ -3,10 +3,10 @@
 	"description": "A full-featured Reddit Feed for Even Realities smart glasses. Browse feeds, read comments, with customizable authenticated or public endpoints.",
 	"edition": "202601",
 	"entrypoint": "index.html",
-	"min_app_version": "0.1.0",
+	"min_app_version": "2.1.1",
 	"min_sdk_version": "0.0.9",
 	"name": "Reddit Feed",
-	"package_id": "com.plungarini.redditfed",
+	"package_id": "com.plungarini.redditfeed",
 	"permissions": [
 		{
 			"desc": "Access network to fetch Reddit feeds",
@@ -14,6 +14,6 @@
 		}
 	],
 	"supported_languages": ["en"],
-	"tagline": "Browse Reddit on your ER glasses",
-	"version": "1.0.0"
+	"tagline": "Reddit. Now literally in front of you.",
+	"version": "0.1.0"
 }

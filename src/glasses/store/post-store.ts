@@ -14,6 +14,7 @@
 
 import { RedditClient } from '../../api/reddit-client';
 import { CachedPost, FeedConfig, RedditComment } from '../../core/types';
+import { clamp } from '../../shared/utils';
 
 type PostStoreListener = () => void;
 
@@ -152,8 +153,13 @@ export class PostStore {
 			this.cacheTimestamp = Date.now();
 			console.log(`[PostStore] Fetched ${posts.length} posts, cached for ${Math.round(this.cacheDurationMs / 1000)}s`);
 		} catch (err) {
-			this.state.error = err instanceof Error ? err.message : 'Failed to load feed';
+			const errorMsg = err instanceof Error ? err.message : 'Failed to load feed';
+			this.state.error = errorMsg;
 			console.error('[PostStore] loadFeed error:', err);
+			// Log additional context for debugging
+			if (err instanceof Error && err.cause) {
+				console.error('[PostStore] Error cause:', err.cause);
+			}
 		} finally {
 			this.state.loading = false;
 			this.clearRetryCountdown();
@@ -258,7 +264,7 @@ export class PostStore {
 	setHighlight(index: number): void {
 		const pagePosts = this.getCurrentPagePosts();
 		const lastPostIndex = Math.max(0, pagePosts.length - 1);
-		const clamped = Math.max(0, Math.min(index, lastPostIndex));
+		const clamped = clamp(index, 0, lastPostIndex);
 		if (clamped !== this.state.highlightedIndex) {
 			this.state.highlightedIndex = clamped;
 			this.notify();

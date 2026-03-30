@@ -4,9 +4,9 @@ import {
 	TextContainerProperty,
 	TextContainerUpgrade,
 } from '@evenrealities/even_hub_sdk';
-import { CachedPost } from '../../core/types';
-import { BORDER_RADIUS } from '../../shared/constants';
-import { fmtScore, normalizeWebText } from '../../shared/utils';
+import { CachedPost } from '../../../core/types';
+import { BORDER_RADIUS } from '../../../shared/constants';
+import { fmtScore, normalizeWebText } from '../../../shared/utils';
 
 export const POSTS_PER_PAGE = 4;
 export const FOOTER_CONTAINER_ID = POSTS_PER_PAGE + 1; // 5

@@ -12,9 +12,12 @@
 		<link rel="manifest" href="/manifest.json" />
 		<link rel="icon" href="/favicon.ico" />
 
+		<script src="/env.js"></script>
+
 		<script>
 			// Early console interception & state management
 			(function () {
+				const MAX_LOGS = 100;
 				globalThis.__debugLogs = [];
 				globalThis.__appState = {
 					status: 'starting',
@@ -25,20 +28,66 @@
 					serverUrl: null,
 				};
 
+				const formatArg = (a) => {
+					if (a instanceof Error) {
+						return {
+							_type: 'Error',
+							message: a.message,
+							stack: a.stack,
+							name: a.name,
+						};
+					}
+					if (a instanceof Response) {
+						return {
+							_type: 'Response',
+							status: a.status,
+							statusText: a.statusText,
+							url: a.url,
+						};
+					}
+					if (a !== null && typeof a === 'object') {
+						try {
+							return JSON.parse(JSON.stringify(a));
+						} catch {
+							return { _type: 'Object', value: String(a) };
+						}
+					}
+					return a;
+				};
+
 				const capture = (level, args) => {
-					const msg = Array.from(args)
-						.map((a) => {
-							if (a instanceof Error) return a.stack || a.message;
-							if (a !== null && typeof a === 'object')
-								try {
-									return JSON.stringify(a, null, 2);
-								} catch (_) {
-									return String(a);
-								}
-							return String(a);
-						})
-						.join(' ');
-					globalThis.__debugLogs.push({ level, msg, ts: Date.now() });
+					const rawArgs = Array.from(args);
+					
+					// Build short message (first arg only, simple format)
+					const firstArg = rawArgs[0];
+					let shortMsg;
+					if (firstArg instanceof Error) {
+						shortMsg = firstArg.message || firstArg.name || 'Error';
+					} else if (typeof firstArg === 'object' && firstArg !== null) {
+						try {
+							const str = JSON.stringify(firstArg);
+							shortMsg = str.length > 100 ? str.substring(0, 100) + '…' : str;
+						} catch {
+							shortMsg = String(firstArg);
+						}
+					} else {
+						shortMsg = String(firstArg);
+					}
+					
+					const entry = { 
+						level, 
+						msg: shortMsg, 
+						ts: Date.now(),
+						details: rawArgs.map(formatArg),
+					};
+					
+					globalThis.__debugLogs.push(entry);
+					
+					// Keep only last MAX_LOGS
+					if (globalThis.__debugLogs.length > MAX_LOGS) {
+						globalThis.__debugLogs = globalThis.__debugLogs.slice(-MAX_LOGS);
+					}
+					
 					if (typeof globalThis.__refreshDebug === 'function') globalThis.__refreshDebug();
 				};
 
@@ -59,10 +108,10 @@
 				};
 
 				globalThis.addEventListener('error', (e) =>
-					capture('error', [`[Uncaught] ${e.message} @ ${e.filename}:${e.lineno}`]),
+					capture('error', [`[Uncaught] ${e.message} @ ${e.filename}:${e.lineno}`, e.error]),
 				);
 				globalThis.addEventListener('unhandledrejection', (e) =>
-					capture('error', [`[Promise] ${e.reason?.stack || e.reason}`]),
+					capture('error', [`[Promise] ${e.reason?.stack || e.reason}`, e.reason]),
 				);
 				globalThis.addEventListener('app:state', (e) => {
 					Object.assign(globalThis.__appState, e.detail);
@@ -72,155 +121,9 @@
 		</script>
 
 		<script type="module" src="/src/main.ts"></script>
-		<script type="module" src="/src/ui/debug-panel.ts"></script>
-		<link rel="stylesheet" href="/src/ui/debug-panel.css" />
+		<script type="module" src="/src/ui/index.tsx"></script>
 	</head>
 	<body>
-		<div class="app-container">
-			<!-- Status View -->
-			<div id="view-status" class="view active">
-				<header>
-					<h1 class="text-large-title">Reddit G2</h1>
-					<span id="status-badge" class="status-indicator pending">Starting…</span>
-				</header>
-
-				<div class="card">
-					<h2 class="card-title">Device Connection</h2>
-					<div class="stat-grid">
-						<div class="stat-item">
-							<span class="stat-label">Bridge</span>
-							<span id="st-bridge" class="stat-value">waiting</span>
-						</div>
-						<div id="server-info" class="stat-item">
-							<span class="stat-label">Server</span>
-							<span id="st-server" class="stat-value">checking…</span>
-						</div>
-					</div>
-					<div id="error-box" class="error-box"></div>
-				</div>
-
-				<div class="card">
-					<h2 class="card-title">Live App State</h2>
-					<div class="stat-grid">
-						<div class="stat-item">
-							<span class="stat-label">Status</span>
-							<span id="st-status" class="stat-value">starting</span>
-						</div>
-						<div class="stat-item">
-							<span class="stat-label">View</span>
-							<span id="st-view" class="stat-value">—</span>
-						</div>
-						<div class="stat-item">
-							<span class="stat-label">Loaded Posts</span>
-							<span id="st-posts" class="stat-value">0</span>
-						</div>
-						<div class="stat-item">
-							<span class="stat-label">Auth</span>
-							<span id="st-auth" class="stat-value">—</span>
-						</div>
-					</div>
-				</div>
-			</div>
-
-			<!-- Settings View -->
-			<div id="view-settings" class="view">
-				<header><h1 class="text-large-title">Settings</h1></header>
-
-				<div class="card">
-					<div class="field">
-						<label>Reddit token_v2</label>
-						<input type="password" id="input-token" placeholder="Paste token_v2…" />
-					</div>
-					<div class="field">
-						<label>Reddit reddit_session</label>
-						<input type="password" id="input-session" placeholder="Paste reddit_session…" />
-					</div>
-					<div class="field">
-						<label>Backend Proxy URL</label>
-						<input type="text" id="input-proxy" placeholder="https://…" />
-						<small id="server-url-display">detecting…</small>
-					</div>
-					<div class="field">
-						<label>Initial Feed</label>
-						<select id="input-feed">
-							<option value="hot">Hot</option>
-							<option value="new">New</option>
-							<option value="rising">Rising</option>
-							<option value="top">Top</option>
-							<option value="best">Best</option>
-						</select>
-					</div>
-					<div class="field">
-						<label>Cache (minutes)</label>
-						<input type="number" id="input-cache" min="1" value="5" />
-					</div>
-
-					<div class="btn-group">
-						<button class="btn primary" onclick="saveSettings()">Save</button>
-						<button class="btn secondary" onclick="testAuth()">Test Auth</button>
-						<button class="btn secondary" onclick="clearCache()">Clear Cache</button>
-						<button class="btn danger" onclick="clearAll()">Reset All</button>
-					</div>
-				</div>
-			</div>
-
-			<!-- Logs View -->
-			<div id="view-logs" class="view">
-				<header>
-					<h1 class="text-large-title">Logs <span id="log-count"></span></h1>
-					<button class="btn secondary" style="padding: 6px 12px; font-size: 11px" onclick="copyLogs()">Copy</button>
-				</header>
-
-				<div class="log-filters">
-					<button id="f-log" class="filter-chip active" onclick="toggleFilter('log')">Log</button>
-					<button id="f-warn" class="filter-chip active" onclick="toggleFilter('warn')">Warn</button>
-					<button id="f-error" class="filter-chip active" onclick="toggleFilter('error')">Error</button>
-					<button class="filter-chip" style="margin-left: auto; opacity: 1" onclick="clearLogs()">Clear</button>
-				</div>
-
-				<div id="log-panel"></div>
-			</div>
-		</div>
-
-		<nav class="bottom-nav">
-			<a href="javascript:void(0)" id="nav-status" class="nav-item active" onclick="switchTab('status')">
-				<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-					<g clip-path="url(#clip0_10001_76285)">
-						<path
-							d="M18 29H14V27H18V29ZM14 27H12V25H14V27ZM20 27H18V25H20V27ZM12 25H10V23H12V25ZM22 25H20V23H22V25ZM10 23H8V21H10V23ZM16 23H14V21H16V23ZM24 23H22V21H24V23ZM8 21H6V19H8V21ZM14 21H12V19H14V21ZM18 21H16V18H18V21ZM26 21H24V19H26V21ZM12 19H10V17H12V19ZM20 18H18V15H20V18ZM10 17H1V15H10V17ZM31 17H26V15H31V17ZM22 15H20V12H22V15ZM26 15H24V12H26V15ZM5 9H4V13H2V9H3V7H5V9ZM29 9H30V13H28V9H27V7H29V9ZM24 12H22V10H24V12ZM17 9H15V7H17V9ZM8 7H5V5H8V7ZM15 7H13V5H15V7ZM19 7H17V5H19V7ZM27 7H24V5H27V7ZM13 5H8V3H13V5ZM24 5H19V3H24V5Z"
-							fill="currentColor"
-						/>
-					</g>
-					<defs>
-						<clipPath id="clip0_10001_76285">
-							<rect width="32" height="32" fill="white" />
-						</clipPath>
-					</defs>
-				</svg>
-			</a>
-			<a href="javascript:void(0)" id="nav-settings" class="nav-item" onclick="switchTab('settings')">
-				<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-					<g clip-path="url(#clip0_10001_76293)">
-						<path
-							d="M13 30H4V28H13V30ZM26 30H21V28H26V30ZM4 28H2V19H4V28ZM15 28H13V19H15V28ZM21 28H19V26H21V28ZM28 28H26V26H28V28ZM19 26H17V21H19V26ZM30 26H28V21H30V26ZM21 21H19V19H21V21ZM28 21H26V19H28V21ZM13 19H4V17H13V19ZM26 19H21V17H26V19ZM13 15H4V13H13V15ZM28 15H19V13H28V15ZM4 13H2V4H4V13ZM15 13H13V4H15V13ZM19 13H17V4H19V13ZM30 13H28V4H30V13ZM13 4H4V2H13V4ZM28 4H19V2H28V4Z"
-							fill="currentColor"
-						/>
-					</g>
-					<defs>
-						<clipPath id="clip0_10001_76293">
-							<rect width="32" height="32" fill="white" />
-						</clipPath>
-					</defs>
-				</svg>
-			</a>
-			<a href="javascript:void(0)" id="nav-logs" class="nav-item" onclick="switchTab('logs')">
-				<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-					<path
-						d="M29 28H3V26H29V28ZM5 21.5H3V19.5H5V21.5ZM29 21H12V19H29V21ZM7 19.5H5V17.5H7V19.5ZM9 17.5H7V15.5H9V17.5ZM7 15.5H5V13.5H7V15.5ZM29 14H12V12H29V14ZM5 13.5H3V11.5H5V13.5ZM29 7H3V5H29V7Z"
-						fill="currentColor"
-					/>
-				</svg>
-			</a>
-		</nav>
+		<div id="root"></div>
 	</body>
 </html>

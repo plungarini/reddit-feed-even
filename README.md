@@ -16,12 +16,12 @@ A fast, modular Reddit client optimized for Even Realities G2 smart glasses.
 
 ## 🎮 Controls
 
-| Gesture        | Action                    |
-| -------------- | ------------------------- |
-| Swipe Forward  | Next post / Scroll down   |
-| Swipe Backward | Previous post / Scroll up |
-| Single Tap     | Open post / View comments |
-| Double Tap     | Go back / Open menu       |
+| Gesture            | Action                    |
+| ------------------ | ------------------------- |
+| Swipe Forward/Down | Next post / Scroll down   |
+| Swipe Backward/Up  | Previous post / Scroll up |
+| Single Tap         | Open post / View comments |
+| Double Tap         | Go back / Open menu       |
 
 ## 🛠️ Development
 
@@ -31,20 +31,6 @@ npm run dev     # Start local server (port 5173)
 npm run build   # Production build (dist/)
 npm run qr      # Generate G2 connection QR code
 ```
-
-## 🏗️ Architecture
-
-- `server/`: Express proxy with `X-Reddit-*` header translation.
-- `src/api/`: Reddit client, rate limiting, and auth management.
-- `src/features/`: Domain logic for feed, comments, and background sync.
-- `src/core/`: Types, config, and global UI state.
-- `src/shared/`: IndexedDB storage and caching.
-
-## 📦 Tech Stack
-
-- **Core**: TypeScript, Vite.
-- **UI**: Even Hub SDK, Vanilla CSS.
-- **Storage**: IndexedDB (via `idb`).
 
 ---
 
