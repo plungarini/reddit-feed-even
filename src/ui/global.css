@@ -1,15 +1,15 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 /* ── Even Toolkit design tokens ────────────────────────────────────────────
-   CORRECT import paths: files live under web/theme/, not web/ directly.
-   Import order matters: CSS vars must be defined BEFORE @theme inline maps them.
-   @theme inline = emit var() refs at runtime (not resolved statically).      */
-@import "even-toolkit/web/theme/tokens-light.css";
-@import "even-toolkit/web/theme/typography.css";
-@import "even-toolkit/web/theme/utilities.css";
+   even-toolkit's package.json exports field has no "style" condition, so
+   @import "even-toolkit/web/theme/..." is blocked by Vite's resolver.
+   Use relative paths to the actual files instead.                         */
+@import '../../node_modules/even-toolkit/web/theme/tokens-light.css';
+@import '../../node_modules/even-toolkit/web/theme/typography.css';
+@import '../../node_modules/even-toolkit/web/theme/utilities.css';
 
-/* Scan compiled toolkit JS so Tailwind doesn't purge class names used inside
-   even-toolkit components at build time.                                      */
+/* Scan compiled toolkit JS so Tailwind doesn't purge class names used
+   inside even-toolkit components at build time.                           */
 @source "../../node_modules/even-toolkit/dist/web/**/*.js";
 
 @theme inline {
