@@ -18,24 +18,8 @@ import {
 	RebuildPageContainer,
 	TextContainerProperty,
 } from '@evenrealities/even_hub_sdk';
+import { ENDPOINTS } from '../../core/config';
 import { FeedEndpoint } from '../../core/types';
-
-export interface MenuItem {
-	id: FeedEndpoint;
-	label: string;
-	desc: string;
-}
-
-export const FEED_ITEMS: MenuItem[] = [
-	{ id: 'hot', label: 'Hot', desc: 'Trending now' },
-	{ id: 'best', label: 'Best', desc: 'Personalized feed' },
-	{ id: 'new', label: 'New', desc: 'Latest posts' },
-	{ id: 'rising', label: 'Rising', desc: 'Gaining popularity' },
-	{ id: 'top', label: 'Top', desc: 'Highest rated' },
-	{ id: 'controversial', label: 'Controversial', desc: 'Most debated' },
-	{ id: 'r/popular', label: 'Popular', desc: 'Across Reddit' },
-	{ id: 'r/all', label: 'All', desc: 'Everything' },
-];
 
 const WIDTH = 576;
 
@@ -91,10 +75,10 @@ export class MenuView {
 	}
 
 	private buildList(currentEndpoint: FeedEndpoint): ListContainerProperty {
-		const itemNames = FEED_ITEMS.map((item) => {
-			const active = item.id === currentEndpoint;
+		const itemNames = Object.entries(ENDPOINTS).map(([key, value]) => {
+			const active = key === currentEndpoint;
 			const indicator = active ? '>  ' : '   ';
-			return `${indicator}${item.label}  -  ${item.desc}`;
+			return `${indicator}${value.name}  -  ${value.description}`;
 		});
 
 		const OFFSET = 120;
@@ -109,7 +93,7 @@ export class MenuView {
 			containerName: 'menu-list',
 			isEventCapture: 1,
 			itemContainer: new ListItemContainerProperty({
-				itemCount: FEED_ITEMS.length,
+				itemCount: itemNames.length,
 				itemWidth: WIDTH - OFFSET * 2,
 				isItemSelectBorderEn: 1,
 				itemName: itemNames,

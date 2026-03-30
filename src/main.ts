@@ -9,13 +9,13 @@ import {
 import { AuthManager } from './api/auth-manager';
 import { RateLimiter } from './api/rate-limiter';
 import { RedditClient } from './api/reddit-client';
-import { DEFAULT_CONFIG, mergeConfig } from './core/config';
-import type { AppConfig } from './core/types';
+import { DEFAULT_CONFIG, ENDPOINTS, mergeConfig } from './core/config';
+import type { AppConfig, FeedEndpoint } from './core/types';
 import { UIManager } from './core/ui-manager';
 import { CommentView } from './features/comments/comment-view';
 import { DetailView } from './features/detail/detail-view';
 import { FeedView } from './features/feed/feed-view';
-import { FEED_ITEMS, MenuView } from './features/feed/menu-view';
+import { MenuView } from './features/feed/menu-view';
 import { PostStore } from './features/feed/post-store';
 import { getStringChunks } from './shared/utils';
 
@@ -31,7 +31,14 @@ let isRendering = false;
 let renderQueued = false;
 
 // Transient active endpoint — NOT persisted; resets to config default on reload
-let activeEndpoint: import('./core/types').FeedEndpoint = 'hot';
+let activeEndpoint: FeedEndpoint = 'hot';
+
+// Mapped Feed Items
+const FEED_ITEMS: { id: FeedEndpoint; label: string; desc: string }[] = Object.entries(ENDPOINTS).map(
+	([key, value]) => {
+		return { id: key as FeedEndpoint, label: value.name, desc: value.description };
+	},
+);
 
 // ─── Loading animation state ─────────────────────────────────────────────────
 let animDots = 3;

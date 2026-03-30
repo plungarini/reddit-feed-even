@@ -4,18 +4,20 @@
  * Highly customizable settings for Reddit endpoints, caching, and UI behavior.
  */
 
-import { ApiConfig, AppConfig, AuthConfig, CacheConfig, FeedConfig } from './types';
+import { ApiConfig, AppConfig, AuthConfig, CacheConfig, FeedConfig, FeedEndpoint } from './types';
+
+const ENV = (globalThis as any).__REDDIT_CLIENT_ENV__ || {};
 
 export const DEFAULT_AUTH: AuthConfig = {
 	type: 'cookie',
-	tokenV2: '',
+	tokenV2: ENV.REDDIT_TOKEN_V2 || '',
 	session: '',
-	userAgent: 'reddit-feed-even/1.0 (Even Realities)',
-	proxyUrl: '',
+	userAgent: ENV.REDDIT_USER_AGENT || 'reddit-feed-even/1.0 (Even Realities)',
+	proxyUrl: ENV.REDDIT_PROXY_URL || '',
 };
 
 export const DEFAULT_API: ApiConfig = {
-	baseUrl: 'https://reddit-feed-even.plungarini.workers.dev',
+	baseUrl: ENV.REDDIT_PROXY_URL || 'https://reddit-feed-even.plungarini.workers.dev',
 };
 
 export const DEFAULT_FEED: FeedConfig = {
@@ -48,14 +50,14 @@ export interface EndpointDefinition {
 	description: string;
 }
 
-export const ENDPOINTS: Record<string, EndpointDefinition> = {
+export const ENDPOINTS: Record<FeedEndpoint, EndpointDefinition> = {
 	best: {
 		name: 'Best',
 		path: '/best.json',
 		requiresAuth: false,
 		supportsSort: false,
 		supportsTime: false,
-		description: 'Personalized best feed (better with auth)',
+		description: 'Personalized feed (only with auth)',
 	},
 	hot: {
 		name: 'Hot',
@@ -130,7 +132,7 @@ export const TIME_FILTERS: { value: string; label: string }[] = [
 // Configuration Helpers
 // ============================================================================
 
-export function createFeedConfig(endpoint: string = 'hot', options: Partial<FeedConfig> = {}): FeedConfig {
+export function createFeedConfig(endpoint: FeedEndpoint = 'hot', options: Partial<FeedConfig> = {}): FeedConfig {
 	const base: FeedConfig = {
 		endpoint: endpoint as any,
 		limit: 25,
