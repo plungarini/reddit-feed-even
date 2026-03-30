@@ -7,6 +7,7 @@
 
 import { ApiConfig, FeedConfig, RedditClientInterface, RedditComment, RedditListing, RedditPost } from '../core/types';
 import { MAX_UPGRADE_LENGTH } from '../shared/constants';
+import { clamp } from '../shared/utils';
 import { AuthManager } from './auth-manager';
 import { RateLimiter } from './rate-limiter';
 
@@ -65,18 +66,18 @@ export class RedditClient implements RedditClientInterface {
 			if (value !== undefined && value !== null) url.searchParams.set(key, value);
 		}
 
-		console.log(`[RedditClient] GET ${url.pathname}${url.search} (retry=${isRetry})`);
+		console.log(`[RedditClient] GET ${url.toString()} (retry=${isRetry})`);
 
 		let response: Response;
 		try {
 			response = await fetch(url.toString(), {
 				headers: this.proxyHeaders(),
-				signal: AbortSignal.timeout(15_000),
+				signal: AbortSignal.timeout(30_000),
 			});
 		} catch (err) {
 			const name = err instanceof Error ? err.name : '';
 			if (name === 'TimeoutError' || name === 'AbortError') {
-				throw new Error(`Request timed out (15s). URL: ${url.pathname}`);
+				throw new Error(`Request timed out (30s). URL: ${url.pathname}`);
 			}
 			throw new Error(`Network error: ${err instanceof Error ? err.message : String(err)}`);
 		}
@@ -128,7 +129,8 @@ export class RedditClient implements RedditClientInterface {
 		}
 
 		const showMediaOnly = config.showMediaOnly;
-		const normLimit = Math.min(500, Math.min(100, config.limit) + (showMediaOnly ? 0 : 100));
+		const clampedLimit = clamp(config.limit, 25, 100);
+		const normLimit = clampedLimit + (showMediaOnly ? 0 : clampedLimit * 2);
 
 		const params: Record<string, string> = {
 			limit: String(normLimit),

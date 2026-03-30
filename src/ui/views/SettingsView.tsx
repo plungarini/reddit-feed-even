@@ -1,12 +1,11 @@
 import { Button, Card, Input, SectionHeader, Select, SettingsGroup, Toast, Toggle } from 'even-toolkit/web';
 import React, { useEffect, useState } from 'react';
-import { clearPreviewCache, PREVIEW_CACHE_CONFIG, setPreviewCacheTtl } from '../../api/preview-cache';
+import { clearExpiredEntries, clearPreviewCache, PREVIEW_CACHE_CONFIG, setPreviewCacheTtl } from '../../api/preview-cache';
 import { ENDPOINTS } from '../../core/config';
+import { clearConfig, loadApiConfig, loadAuth, loadCacheConfig, loadFeedConfig, saveSettings } from '../../core/config-manager';
 import { clamp } from '../../shared/utils';
 
-const AUTH_KEY = 'reddit-feed-auth';
-const CONFIG_KEY = 'reddit-feed-config';
-const PROXY_URL = (globalThis as any)?.__REDDIT_CLIENT_ENV__?.REDDIT_PROXY_URL;
+const ENV_PROXY_URL = (globalThis as any)?.__REDDIT_CLIENT_ENV__?.REDDIT_PROXY_URL;
 
 /** Mobile-friendly stacked field: label + optional hint above the input. */
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
@@ -23,8 +22,7 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
 
 function clearAll() {
 	if (confirm('Reset all settings and auth data?')) {
-		localStorage.removeItem(AUTH_KEY);
-		localStorage.removeItem(CONFIG_KEY);
+		clearConfig();
 		clearPreviewCache();
 		globalThis.location.reload();
 	}
@@ -33,7 +31,7 @@ function clearAll() {
 export function SettingsView() {
 	const [token, setToken] = useState('');
 	const [session, setSession] = useState('');
-	const [proxy, setProxy] = useState(PROXY_URL);
+	const [proxyUrl, setProxyUrl] = useState(ENV_PROXY_URL || '');
 	const [feed, setFeed] = useState('hot');
 	const [cacheMins, setCacheMins] = useState('5');
 
@@ -47,16 +45,25 @@ export function SettingsView() {
 
 	useEffect(() => {
 		try {
-			const auth = JSON.parse(localStorage.getItem(AUTH_KEY) || '{}');
-			const config = JSON.parse(localStorage.getItem(CONFIG_KEY) || '{}');
+			// Use config manager to load settings
+			const auth = loadAuth();
+			const apiConfig = loadApiConfig();
+			const feedConfig = loadFeedConfig();
+			const cacheConfig = loadCacheConfig();
+
 			if (auth.tokenV2) setToken(auth.tokenV2);
 			if (auth.session) setSession(auth.session);
-			if (auth.proxyUrl) setProxy(auth.proxyUrl || PROXY_URL);
-			if (auth.userAgent) setUserAgent(auth.userAgent || 'reddit-feed-even/1.0');
-			if (config.feed?.endpoint) setFeed(config.feed.endpoint);
-			if (config.feed?.showMediaOnly !== undefined) setShowMediaOnly(config.feed.showMediaOnly);
-			if (config.cache?.durationMs) {
-				const mins = Math.floor(config.cache.durationMs / 60000);
+			if (auth.userAgent) setUserAgent(auth.userAgent);
+
+			// Load proxy URL from api.baseUrl (or fallback to env)
+			if (apiConfig.baseUrl) setProxyUrl(apiConfig.baseUrl);
+			else if (ENV_PROXY_URL) setProxyUrl(ENV_PROXY_URL);
+
+			if (feedConfig.endpoint) setFeed(feedConfig.endpoint);
+			if (feedConfig.showMediaOnly !== undefined) setShowMediaOnly(feedConfig.showMediaOnly);
+
+			if (cacheConfig.durationMs) {
+				const mins = Math.floor(cacheConfig.durationMs / 60000);
 				setCacheMins(String(clamp(mins, MIN_CACHE_MINUTES, MAX_CACHE_MINUTES)));
 			}
 		} catch (e) {
@@ -64,26 +71,36 @@ export function SettingsView() {
 		}
 	}, []);
 
-	function saveSettings() {
+	function handleSaveSettings() {
+		const trimmedProxy = proxyUrl.trim();
+		const finalProxyUrl = trimmedProxy || ENV_PROXY_URL || 'https://reddit-feed-even.plungarini.workers.dev';
+
 		const auth = {
+			type: 'cookie' as const,
 			tokenV2: token.trim(),
 			session: session.trim(),
-			proxyUrl: proxy.trim() || PROXY_URL,
 			userAgent: userAgent.trim() || 'reddit-feed-even/1.0',
 		};
+
 		const cacheDurationMs = clamp(Number.parseInt(cacheMins, 10) || 5, MIN_CACHE_MINUTES, MAX_CACHE_MINUTES) * 60 * 1000;
-		const config = {
-			feed: { endpoint: feed, limit: 25, showMediaOnly },
-			cache: {
-				durationMs: cacheDurationMs,
-			},
+
+		const feedConfig = {
+			endpoint: feed as any,
+			limit: 25,
+			showMediaOnly,
 		};
 
 		// Sync link preview cache TTL with feed cache duration
 		setPreviewCacheTtl(cacheDurationMs);
 
-		localStorage.setItem(AUTH_KEY, JSON.stringify(auth));
-		localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
+		// Save via config manager
+		saveSettings({
+			auth,
+			feed: feedConfig,
+			cacheDurationMs,
+			apiBaseUrl: finalProxyUrl,
+		});
+
 		setToast('Saved! Reloading…');
 		setTimeout(() => globalThis.location.reload(), 800);
 	}
@@ -155,12 +172,12 @@ export function SettingsView() {
 				<SectionHeader title="Advanced" />
 				<Card>
 					<SettingsGroup label="Expert settings">
-						<Field label="Backend Proxy URL" hint="CORS proxy for Reddit API calls.">
+						<Field label="Backend Proxy URL" hint="CORS proxy for Reddit API calls (e.g., http://192.168.1.100:3001).">
 							<Input
 								type="url"
-								placeholder="https://my-proxy.workers.dev"
-								value={proxy}
-								onChange={(e) => setProxy(e.target.value)}
+								placeholder="https://reddit-feed-even.plungarini.workers.dev"
+								value={proxyUrl}
+								onChange={(e) => setProxyUrl(e.target.value)}
 							/>
 						</Field>
 						<Field label="User Agent" hint="User agent for Reddit API calls.">
@@ -176,7 +193,7 @@ export function SettingsView() {
 			</div>
 
 			{/* Primary save CTA */}
-			<Button variant="highlight" onClick={saveSettings} className="w-full h-14 text-[17px]">
+			<Button variant="highlight" onClick={handleSaveSettings} className="w-full h-14 text-[17px]">
 				Save Settings
 			</Button>
 
@@ -184,7 +201,16 @@ export function SettingsView() {
 			<section>
 				<SectionHeader title="Danger Zone" />
 				<div className="flex gap-3">
-					<Button variant="default" onClick={() => globalThis.location.reload()} className="flex-1">
+					<Button
+						variant="default"
+						onClick={() => {
+							clearPreviewCache();
+							clearExpiredEntries();
+							setToast('Caches cleared');
+							setTimeout(() => globalThis.location.reload(), 500);
+						}}
+						className="flex-1"
+					>
 						Clear Cache
 					</Button>
 					<Button variant="danger" onClick={clearAll} className="flex-1">

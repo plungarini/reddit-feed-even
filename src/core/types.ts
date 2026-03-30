@@ -87,7 +87,6 @@ export interface AuthConfig {
 	tokenV2?: string;
 	session?: string;
 	userAgent: string;
-	proxyUrl?: string;
 }
 
 export interface CacheConfig {
