@@ -263,6 +263,7 @@ async function main() {
 		const view = uiManager.getCurrentView();
 		if (view !== 'comments') views.comment.reset();
 		if (view !== 'feed') views.feed.reset();
+		if (view !== 'detail') views.detail.reset();
 		scheduleRender(bridge, postStore, uiManager, views);
 	});
 

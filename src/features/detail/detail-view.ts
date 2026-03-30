@@ -33,6 +33,9 @@ export class DetailView {
 	private readonly bridge: EvenAppBridge;
 	private readonly proxyUrl: string;
 	private lastPostId: string | null = null;
+	private initializedPostId: string | null = null;
+	private linkPreviewCache: Map<string, string[]> = new Map();
+	private fetchingPostId: string | null = null;
 
 	constructor(bridge: EvenAppBridge, proxyUrl: string) {
 		this.bridge = bridge;
@@ -40,6 +43,10 @@ export class DetailView {
 		if (this.proxyUrl && !this.proxyUrl.endsWith('/api')) {
 			this.proxyUrl = `${this.proxyUrl}/api`;
 		}
+	}
+
+	reset(): void {
+		this.initializedPostId = null;
 	}
 
 	/**
@@ -75,6 +82,15 @@ export class DetailView {
 			console.log('[DetailView] render aborted after buildContent');
 			return;
 		}
+
+		if (this.initializedPostId === post.id) {
+			console.log('[DetailView] Post already initialized, skipping rebuild');
+			if (post.contentType === 'link' && !this.linkPreviewCache.has(post.id)) {
+				await this.updateContent(post, 'update', signal);
+			}
+			return;
+		}
+
 		console.log(`[DetailView] render post=${post.id} len=${content.length} changed=${postChanged}`);
 
 		const detail = new TextContainerProperty({
@@ -102,6 +118,8 @@ export class DetailView {
 			console.log('[DetailView] rebuildPageContainer:', ok);
 			if (!ok) throw new Error('rebuildPageContainer returned false (detail)');
 
+			this.initializedPostId = post.id;
+
 			if (trimmed) {
 				await this.updateContent(post, 'contentLen', signal);
 			}
@@ -116,12 +134,15 @@ export class DetailView {
 
 	async updateContent(post: CachedPost, mode: 'contentLen' | 'update', signal?: AbortSignal) {
 		if (signal?.aborted) return;
+
+		// If it's a link and we already have it in cache, and we are in 'update' mode, we can skip if we want,
+		// but buildContent handles the cache check, so we just check if it's actually changing anything.
 		const { content } = await this.buildContent(post, mode);
 		if (signal?.aborted) {
 			console.log('[DetailView] updateContent aborted after buildContent');
 			return;
 		}
-		console.log(`[DetailView] updateContent post=${post.id} len=${content.length}`);
+		console.log(`[DetailView] updateContent post=${post.id} mode=${mode} len=${content.length}`);
 
 		try {
 			const container = new TextContainerUpgrade({
@@ -141,16 +162,6 @@ export class DetailView {
 
 	/**
 	 * Build post content for display
-	 * Format:
-	 *   r/subreddit  ^score  c:comments
-	 *
-	 *   Title
-	 *
-	 *   [Body or content type indicator]
-	 *
-	 *   u/author • time ago
-	 *
-	 *   tap: comments  dbl: back
 	 */
 	private async buildContent(
 		post: CachedPost,
@@ -167,12 +178,32 @@ export class DetailView {
 
 		const attachmentLines = [''];
 		if (post.contentType !== 'self') {
-			const normContentLabel = post.contentType === 'link' ? 'Loading Link Preview…' : post.contentType + ' Attachment';
-			let contentLabel = `╭─────────────────────────╮\n│    ${capitalizeText(normContentLabel)}\n╰─────────────────────────╯`;
-			if (post.contentType === 'link' && mode === 'update') {
-				const linkLines = await buildLinkPreview(post.url, this.proxyUrl);
-				attachmentLines.push(...linkLines);
+			if (post.contentType === 'link') {
+				const cached = this.linkPreviewCache.get(post.id);
+				if (cached) {
+					attachmentLines.push(...cached);
+				} else if (mode === 'update') {
+					if (this.fetchingPostId === post.id) {
+						// Wait for existing fetch or just show loading
+						attachmentLines.push(`╭─────────────────────────╮\n│    Loading Link Preview…\n╰─────────────────────────╯`);
+					} else {
+						this.fetchingPostId = post.id;
+						try {
+							const linkLines = await buildLinkPreview(post.url, this.proxyUrl);
+							this.linkPreviewCache.set(post.id, linkLines);
+							attachmentLines.push(...linkLines);
+						} catch (e) {
+							console.error('[DetailView] Failed to build link preview:', e);
+							attachmentLines.push(`╭─────────────────────────╮\n│    Link Preview Failed\n╰─────────────────────────╯`);
+						} finally {
+							this.fetchingPostId = null;
+						}
+					}
+				} else {
+					attachmentLines.push(`╭─────────────────────────╮\n│    Loading Link Preview…\n╰─────────────────────────╯`);
+				}
 			} else {
+				const contentLabel = `╭─────────────────────────╮\n│    ${capitalizeText(post.contentType)} Attachment\n╰─────────────────────────╯`;
 				attachmentLines.push(contentLabel);
 			}
 		}

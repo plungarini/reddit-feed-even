@@ -167,12 +167,13 @@ export class RedditClient implements RedditClientInterface {
 		for (const child of children) {
 			if (child.kind !== 't1') continue;
 			if (child.data.author === '[deleted]' || child.data.body === '[deleted]') continue;
+			if (child.data.body && child.data.body.length >= 1900) continue;
 
 			result.push({
 				id: child.data.id,
 				author: child.data.author,
 				body: child.data.body,
-				score: child.data.score,
+				score: child.data.score || child.data.ups,
 				createdUtc: child.data.created_utc,
 			});
 
@@ -214,7 +215,7 @@ export class RedditClient implements RedditClientInterface {
 			permalink: raw.permalink,
 			selftext: raw.selftext || undefined,
 			author: raw.author,
-			score: raw.score,
+			score: raw.score || raw.data.ups,
 			upvoteRatio: raw.upvote_ratio,
 			numComments: raw.num_comments,
 			createdUtc: raw.created_utc,
