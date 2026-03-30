@@ -58,12 +58,12 @@ export class MenuView {
 	}
 
 	private buildHeader(): TextContainerProperty {
-		const text = '╭────  Select your Feed  ────╮';
+		const text = '╭───────  Select your Feed  ───────╮';
 		const textWidth = text.length * 12;
 		return new TextContainerProperty({
 			xPosition: Math.floor((WIDTH - textWidth) / 2),
 			yPosition: HEADER_Y,
-			width: textWidth + 20,
+			width: WIDTH,
 			height: HEADER_H,
 			borderWidth: 0,
 			paddingLength: 5,
@@ -81,9 +81,9 @@ export class MenuView {
 			return `${indicator}${value.name}  -  ${value.description}`;
 		});
 
-		const OFFSET = 120;
+		const OFFSET = 60;
 		return new ListContainerProperty({
-			xPosition: OFFSET + 5,
+			xPosition: 90,
 			yPosition: LIST_Y,
 			width: WIDTH - OFFSET * 2,
 			height: LIST_H,
