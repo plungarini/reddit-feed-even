@@ -1,0 +1,72 @@
+@import "tailwindcss";
+
+/* ── Even Toolkit design tokens ────────────────────────────────────────────
+   CORRECT import paths: files live under web/theme/, not web/ directly.
+   Import order matters: CSS vars must be defined BEFORE @theme inline maps them.
+   @theme inline = emit var() refs at runtime (not resolved statically).      */
+@import "even-toolkit/web/theme/tokens-light.css";
+@import "even-toolkit/web/theme/typography.css";
+@import "even-toolkit/web/theme/utilities.css";
+
+/* Scan compiled toolkit JS so Tailwind doesn't purge class names used inside
+   even-toolkit components at build time.                                      */
+@source "../../node_modules/even-toolkit/dist/web/**/*.js";
+
+@theme inline {
+	/* Background / surface */
+	--color-bg: var(--color-bg);
+	--color-surface: var(--color-surface);
+	--color-surface-light: var(--color-surface-light);
+	--color-surface-lighter: var(--color-surface-lighter);
+
+	/* Accent */
+	--color-accent: var(--color-accent);
+	--color-accent-alpha: var(--color-accent-alpha);
+	--color-accent-warning: var(--color-accent-warning);
+
+	/* Text */
+	--color-text: var(--color-text);
+	--color-text-dim: var(--color-text-dim);
+	--color-text-muted: var(--color-text-muted);
+	--color-text-highlight: var(--color-text-highlight);
+
+	/* Borders */
+	--color-border: var(--color-border);
+	--color-border-light: var(--color-border-light);
+
+	/* Status */
+	--color-positive: var(--color-positive);
+	--color-positive-alpha: var(--color-positive-alpha);
+	--color-negative: var(--color-negative);
+	--color-negative-alpha: var(--color-negative-alpha);
+
+	/* Misc */
+	--color-overlay: var(--color-overlay);
+	--color-input-bg: var(--color-input-bg);
+
+	/* Layout & spacing */
+	--radius-default: var(--radius-default);
+	--spacing-margin: var(--spacing-margin);
+	--spacing-card-margin: var(--spacing-card-margin);
+	--spacing-same: var(--spacing-same);
+	--spacing-cross: var(--spacing-cross);
+	--spacing-section: var(--spacing-section);
+
+	/* Fonts */
+	--font-display: var(--font-display);
+	--font-body: var(--font-body);
+}
+
+@layer base {
+	html,
+	body {
+		@apply bg-bg text-text antialiased;
+		font-family: var(--font-body);
+		height: 100%;
+		overflow-x: hidden;
+	}
+
+	#root {
+		height: 100%;
+	}
+}
