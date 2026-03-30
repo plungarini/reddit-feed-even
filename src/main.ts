@@ -254,7 +254,7 @@ async function main() {
 		} else if (view === 'comments') {
 			handleCommentsEvent(type, postStore, uiManager, views.comment);
 		} else if (view === 'menu') {
-			handleMenuEvent(type, listEvent, postStore, uiManager);
+			handleMenuEvent(type, listEvent, postStore, uiManager, bridge);
 		}
 	});
 
@@ -341,6 +341,7 @@ function handleMenuEvent(
 	listEvent: { currentSelectItemIndex?: number; currentSelectItemName?: string } | undefined,
 	postStore: PostStore,
 	uiManager: UIManager,
+	bridge: Bridge,
 ): void {
 	const entry = uiManager.getCurrentEntry();
 	if (type === OsEventTypeList.SCROLL_BOTTOM_EVENT || type === OsEventTypeList.SCROLL_TOP_EVENT) {
@@ -360,7 +361,8 @@ function handleMenuEvent(
 			uiManager.updateCurrentContext({ pageIndex: 0, highlightIndex: 0 });
 		}
 	} else if (type === OsEventTypeList.DOUBLE_CLICK_EVENT) {
-		uiManager.goBack();
+		console.log('[Main] Menu double-click: showing exit confirmation');
+		bridge.shutDownPageContainer(1).catch(console.error);
 	}
 }
 
