@@ -153,15 +153,16 @@ export class RedditClient implements RedditClientInterface {
 	// ========================================================================
 
 	async fetchComments(postId: string, limit: number = 100): Promise<RedditComment[]> {
+		const normLimit = Math.min(limit, 100);
 		const response = await this.get<[unknown, RedditListing<any>]>(`/comments/${postId}.json`, {
-			limit: String(limit),
+			limit: String(normLimit + 10),
 			depth: '1',
 			sort: 'top',
 		});
-		return this.flattenComments(response[1].data.children, 2);
+		return this.flattenComments(response[1].data.children, normLimit, 2);
 	}
 
-	private flattenComments(children: any[], maxDepth: number = 2, depth: number = 0): RedditComment[] {
+	private flattenComments(children: any[], limit: number, maxDepth: number = 2, depth: number = 0): RedditComment[] {
 		const result: RedditComment[] = [];
 
 		for (const child of children) {
@@ -183,7 +184,7 @@ export class RedditClient implements RedditClientInterface {
 			}
 		}
 
-		return result.sort((a, b) => b.score - a.score);
+		return result.slice(0, limit).sort((a, b) => b.score - a.score);
 	}
 
 	// ========================================================================
