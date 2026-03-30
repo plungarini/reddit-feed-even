@@ -12,11 +12,11 @@ import { RedditClient } from './api/reddit-client';
 import { DEFAULT_CONFIG, ENDPOINTS, mergeConfig } from './core/config';
 import type { AppConfig, FeedEndpoint } from './core/types';
 import { UIManager } from './core/ui-manager';
-import { CommentView } from './features/comments/comment-view';
-import { DetailView } from './features/detail/detail-view';
-import { FeedView } from './features/feed/feed-view';
-import { MenuView } from './features/feed/menu-view';
-import { PostStore } from './features/feed/post-store';
+import { CommentView } from './glasses/screens/comments/comment-view';
+import { DetailView } from './glasses/screens/detail/detail-view';
+import { FeedView } from './glasses/screens/feed/feed-view';
+import { MenuView } from './glasses/screens/menu/menu-view';
+import { PostStore } from './glasses/store/post-store';
 import { getStringChunks } from './shared/utils';
 
 const CONFIG_KEY = 'reddit-feed-config';

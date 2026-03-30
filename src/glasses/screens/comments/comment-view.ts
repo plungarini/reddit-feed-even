@@ -5,9 +5,9 @@ import {
 	TextContainerUpgrade,
 } from '@evenrealities/even_hub_sdk';
 import { oneLine } from 'common-tags';
-import { RedditComment } from '../../core/types';
-import { BORDER_RADIUS, MAX_CREATE_LENGTH, MAX_UPGRADE_LENGTH } from '../../shared/constants';
-import { fmtScore, fmtTimeAgo, getStringChunks, normalizeWebText } from '../../shared/utils';
+import { RedditComment } from '../../../core/types';
+import { BORDER_RADIUS, MAX_CREATE_LENGTH, MAX_UPGRADE_LENGTH } from '../../../shared/constants';
+import { fmtScore, fmtTimeAgo, getStringChunks, normalizeWebText } from '../../../shared/utils';
 
 // ─── Layout ───────────────────────────────────────────────────────────────────
 const WIDTH = 576;

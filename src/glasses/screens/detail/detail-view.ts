@@ -22,10 +22,10 @@ import {
 	TextContainerProperty,
 	TextContainerUpgrade,
 } from '@evenrealities/even_hub_sdk';
-import { getCachedPreview, setCachedPreview } from '../../api/preview-cache';
-import { CachedPost } from '../../core/types';
-import { BORDER_RADIUS, MAX_CREATE_LENGTH, MAX_UPGRADE_LENGTH } from '../../shared/constants';
-import { capitalizeText, fmtScore, fmtTimeAgo, getStringChunks, normalizeWebText } from '../../shared/utils';
+import { getCachedPreview, setCachedPreview } from '../../../api/preview-cache';
+import { CachedPost } from '../../../core/types';
+import { BORDER_RADIUS, MAX_CREATE_LENGTH, MAX_UPGRADE_LENGTH } from '../../../shared/constants';
+import { capitalizeText, fmtScore, fmtTimeAgo, getStringChunks, normalizeWebText } from '../../../shared/utils';
 
 const LINK_MAX_LINE_LEN = 52;
 const LINK_MAX_DESC_LEN = 200;

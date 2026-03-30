@@ -18,8 +18,8 @@ import {
 	RebuildPageContainer,
 	TextContainerProperty,
 } from '@evenrealities/even_hub_sdk';
-import { ENDPOINTS } from '../../core/config';
-import { FeedEndpoint } from '../../core/types';
+import { ENDPOINTS } from '../../../core/config';
+import { FeedEndpoint } from '../../../core/types';
 
 const WIDTH = 576;
 
