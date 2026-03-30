@@ -2,107 +2,49 @@
 import { Hono } from 'hono';
 import { PeekalinkRedirectLoopError, preview as previewModes } from '../features/preview';
 import { PreviewData } from '../types/preview';
+import { CACHE_CONFIG, clampTtl, generateCacheKey, getCacheTtlFromRequest } from '../utils/cache';
 
 const router = new Hono();
 
-// ─── Link Preview endpoint ────────────────
-router.get('/v1', async (c) => {
-	const url = c.req.query('url');
-	if (!url) return c.json({ error: 'Missing url parameter' }, 400);
+// ─── Helper: Store response in cache with TTL ────────────────────────────────
+async function cacheResponse(cache: Cache, cacheKey: Request, response: Response, ttlSeconds: number): Promise<void> {
+	const clampedTtl = clampTtl(ttlSeconds);
 
-	try {
-		console.log(`[Proxy] Fetching preview (fast) for: ${url}`);
+	// Create a new response with Cache-Control header for TTL
+	const responseToCache = new Response(response.body, {
+		status: response.status,
+		statusText: response.statusText,
+		headers: {
+			...Object.fromEntries(response.headers.entries()),
+			'Cache-Control': `max-age=${clampedTtl}`,
+			Date: new Date().toUTCString(),
+		},
+	});
 
-		const response = await fetch(url, {
-			headers: {
-				'User-Agent': 'Mozilla/5.0 (compatible; RedditClientEven/1.0; +https://plungarini.github.io)',
-				Accept: 'text/html',
-				Range: 'bytes=0-51200',
-			},
-			redirect: 'follow',
-			signal: AbortSignal.timeout(5000),
-		});
+	await cache.put(cacheKey, responseToCache);
+}
 
-		// 206 is "Partial Content" (expected if the server respected our Range header)
-		if (!response.ok && response.status !== 206) {
-			throw new Error(`Target status: ${response.status}`);
-		}
-
-		let ogTitle = '';
-		let htmlTitle = '';
-		let desc = '';
-		let img = '';
-
-		const rewriter = new HTMLRewriter()
-			.on('meta', {
-				element(e) {
-					// Look for both 'name' (standard) and 'property' (Open Graph)
-					const name = (e.getAttribute('name') || e.getAttribute('property'))?.toLowerCase();
-					const content = e.getAttribute('content');
-
-					if (!name || !content) return;
-
-					if (name === 'og:title' || name === 'twitter:title') ogTitle = content;
-					if (name === 'description' || name === 'og:description' || name === 'twitter:description') {
-						desc = desc || content; // Keep the first one we find
-					}
-					if (name === 'og:image' || name === 'twitter:image') img = img || content;
-				},
-			})
-			.on('title', {
-				text(t) {
-					htmlTitle += t.text;
-				},
-			});
-
-		const transformed = rewriter.transform(response);
-
-		if (transformed.body) {
-			const reader = transformed.body.getReader();
-			let bytesRead = 0;
-
-			while (true) {
-				const { done, value } = await reader.read();
-				if (done) break;
-
-				bytesRead += value.byteLength;
-				if (bytesRead > 51200) {
-					await reader.cancel();
-					break;
-				}
-			}
-		}
-
-		let finalTitle = ogTitle || htmlTitle || undefined;
-
-		finalTitle = finalTitle?.replaceAll(/\s+/g, ' ').trim();
-
-		const data = {
-			title: finalTitle,
-			description: desc.replaceAll(/\s+/g, ' ').trim(),
-			image: img,
-			url: url,
-		};
-
-		console.log(`[Proxy] Preview success:`, data.title);
-		return c.json(data);
-	} catch (err) {
-		const message = err instanceof Error ? err.message : String(err);
-		console.error(`[Proxy] Preview error for ${url}:`, message);
-		return c.json({ error: message }, 500);
-	}
-});
-
+// ─── Full Preview endpoint ──────────────────────────────────────────
 router.get('/', async (c) => {
 	const url = c.req.query('url');
 	if (!url) return c.json({ error: 'Missing url parameter' }, 400);
 
 	const cache = (caches as unknown as { default: Cache }).default;
-	const cacheKey = new Request(`https://preview-cache/${encodeURIComponent(url)}`);
+	const cacheKey = generateCacheKey(url, 'preview');
+
+	// Get TTL (client can override via header, otherwise use default)
+	const ttlSeconds = getCacheTtlFromRequest(c.req.raw);
+
+	// Check cache first
 	const cached = await cache.match(cacheKey);
 	if (cached) {
-		console.log(`[Preview] Cache hit: ${url}`);
-		return cached;
+		const dateHeader = cached.headers.get('date');
+		const isValid = dateHeader ? (Date.now() - new Date(dateHeader).getTime()) / 1000 < ttlSeconds : true;
+
+		if (isValid) {
+			console.log(`[Preview] Cache hit: ${url}`);
+			return cached;
+		}
 	}
 
 	try {
@@ -126,13 +68,15 @@ router.get('/', async (c) => {
 
 		const response = c.json(data);
 
-		c.executionCtx.waitUntil(cache.put(cacheKey, response.clone()));
+		// Cache the successful response with configured TTL
+		c.executionCtx.waitUntil(cacheResponse(cache, cacheKey, response.clone(), ttlSeconds));
 
 		return response;
 	} catch (err) {
 		if (err instanceof PeekalinkRedirectLoopError) {
-			c.executionCtx.waitUntil(cache.put(cacheKey, c.json({ url: url, error: 'Link redirects to itself' }, 400)));
-			return c.json({ error: 'Link redirects to itself' }, 400);
+			const errorResponse = c.json({ url: url, error: 'Link redirects to itself' }, 400);
+			c.executionCtx.waitUntil(cacheResponse(cache, cacheKey, errorResponse.clone(), CACHE_CONFIG.DEFAULT_TTL_SECONDS));
+			return errorResponse;
 		}
 
 		const message = err instanceof Error ? err.message : String(err);

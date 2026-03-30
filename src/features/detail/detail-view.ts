@@ -22,8 +22,9 @@ import {
 	TextContainerProperty,
 	TextContainerUpgrade,
 } from '@evenrealities/even_hub_sdk';
+import { getCachedPreview, setCachedPreview } from '../../api/preview-cache';
 import { CachedPost } from '../../core/types';
-import { BORDER_RADIUS } from '../../shared/constants';
+import { BORDER_RADIUS, MAX_CREATE_LENGTH, MAX_UPGRADE_LENGTH } from '../../shared/constants';
 import { capitalizeText, fmtScore, fmtTimeAgo, getStringChunks, normalizeWebText } from '../../shared/utils';
 
 const LINK_MAX_LINE_LEN = 52;
@@ -91,7 +92,7 @@ export class DetailView {
 			return;
 		}
 
-		console.log(`[DetailView] render post=${post.id} len=${content.length} changed=${postChanged}`);
+		console.log(`[DetailView] render post=${post.id} len=${content.length} trimmed=${trimmed} changed=${postChanged}`);
 
 		const detail = new TextContainerProperty({
 			xPosition: 0,
@@ -165,7 +166,7 @@ export class DetailView {
 		post: CachedPost,
 		mode: 'create' | 'contentLen' | 'update',
 	): Promise<{ content: string; trimmed: boolean }> {
-		const CHARS_LIMIT = ['update', 'contentLen'].includes(mode) ? 1950 : 950;
+		const CHARS_LIMIT = ['update', 'contentLen'].includes(mode) ? MAX_UPGRADE_LENGTH : MAX_CREATE_LENGTH;
 
 		let totalChars = 0;
 		let trimmed = false;
@@ -184,7 +185,7 @@ export class DetailView {
 			const remainingChars = CHARS_LIMIT - totalChars;
 			const body = '───────────────────────────\n' + normalizeWebText(post.selftext);
 
-			trimmed = body.length > remainingChars;
+			trimmed = body.length + lines.join('\n').length >= remainingChars;
 			const truncated = trimmed ? body.substring(0, remainingChars - 50) + '…' : body;
 			lines.push(truncated);
 		}
@@ -263,11 +264,30 @@ async function extractLink(
 	url: string,
 	proxyUrl: string,
 ): Promise<{ domain: string; title?: string; description?: string }> {
-	if (!url) return { domain: '' };
+	if (!url) return { domain: 'unknown' };
+
+	const domain = extractDomain(url);
+
 	try {
+		// Check client-side cache first
+		const cached = getCachedPreview(url);
+		if (cached) {
+			console.log(`[DetailView] Client cache hit for: ${url}`);
+			return {
+				domain,
+				title: cached.title ? normalizeWebText(cached.title) : undefined,
+				description: cached.description ? normalizeWebText(cached.description) : undefined,
+			};
+		}
+
+		// Fetch from server
 		const previewUrl = `${proxyUrl}/preview?url=${encodeURIComponent(url)}`;
 		console.log(`[DetailView] Fetching preview: ${previewUrl}`);
-		const response = await fetch(previewUrl, { signal: AbortSignal.timeout(60000) });
+
+		const response = await fetch(previewUrl, {
+			signal: AbortSignal.timeout(60000),
+		});
+
 		if (response.ok) {
 			const data = await response.json<{
 				title?: string;
@@ -275,8 +295,17 @@ async function extractLink(
 				url: string;
 			}>();
 			console.log('[DetailView] Preview data:', { data });
+
+			// Store in client cache
+			if (data.title || data.description) {
+				setCachedPreview(url, {
+					title: data.title,
+					description: data.description,
+				});
+			}
+
 			return {
-				domain: new URL(url).hostname.replace(/^www\./, ''),
+				domain,
 				title: data.title ? normalizeWebText(data.title) : undefined,
 				description: data.description ? normalizeWebText(data.description) : undefined,
 			};
@@ -285,10 +314,17 @@ async function extractLink(
 		console.warn('[DetailView] Preview fetch failed:', e);
 	}
 
-	// Fallback
+	// Fallback to just domain
+	return { domain };
+}
+
+/**
+ * Extract domain from URL
+ */
+function extractDomain(url: string): string {
 	try {
-		return { domain: new URL(url).hostname.replace(/^www\./, '') };
+		return new URL(url).hostname.replace(/^www\./, '');
 	} catch {
-		return { domain: url.substring(0, 30) };
+		return url.substring(0, 30);
 	}
 }
