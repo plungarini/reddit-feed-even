@@ -62,6 +62,7 @@ export interface FeedConfig {
 	sort?: SortOption;
 	time?: TimeFilter;
 	limit: number;
+	showMediaOnly?: boolean;
 }
 
 export type FeedEndpoint = 'best' | 'hot' | 'new' | 'rising' | 'top' | 'controversial' | 'r/popular' | 'r/all';

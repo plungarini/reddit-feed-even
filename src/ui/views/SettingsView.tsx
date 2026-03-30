@@ -1,4 +1,4 @@
-import { Button, Card, Input, SectionHeader, Select, SettingsGroup, Toast } from 'even-toolkit/web';
+import { Button, Card, Input, SectionHeader, Select, SettingsGroup, Toast, Toggle } from 'even-toolkit/web';
 import React, { useEffect, useState } from 'react';
 import { ENDPOINTS } from '../../core/config';
 
@@ -9,9 +9,11 @@ const PROXY_URL = (globalThis as any)?.__REDDIT_CLIENT_ENV__?.REDDIT_PROXY_URL;
 /** Mobile-friendly stacked field: label + optional hint above the input. */
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
 	return (
-		<div className="bg-surface py-4 flex flex-col gap-2">
-			<span className="text-normal-title text-text">{label}</span>
-			{hint && <span className="text-detail text-text-dim">{hint}</span>}
+		<div className="bg-surface py-4 flex flex-row flex-wrap justify-between gap-2">
+			<div className="flex flex-col gap-2">
+				<span className="text-normal-title text-text">{label}</span>
+				{hint && <span className="text-detail text-text-dim">{hint}</span>}
+			</div>
 			{children}
 		</div>
 	);
@@ -31,6 +33,7 @@ export function SettingsView() {
 	const [proxy, setProxy] = useState(PROXY_URL);
 	const [feed, setFeed] = useState('hot');
 	const [cacheMins, setCacheMins] = useState('5');
+	const [showMediaOnly, setShowMediaOnly] = useState(false);
 	const [toast, setToast] = useState('');
 	const [userAgent, setUserAgent] = useState('reddit-feed-even/1.0');
 
@@ -43,6 +46,7 @@ export function SettingsView() {
 			if (auth.proxyUrl) setProxy(auth.proxyUrl || PROXY_URL);
 			if (auth.userAgent) setUserAgent(auth.userAgent || 'reddit-feed-even/1.0');
 			if (config.feed?.endpoint) setFeed(config.feed.endpoint);
+			if (config.feed?.showMediaOnly !== undefined) setShowMediaOnly(config.feed.showMediaOnly);
 			if (config.cache?.durationMs) setCacheMins(String(Math.max(1, Math.floor(config.cache.durationMs / 60000))));
 		} catch (e) {
 			console.warn('[Settings] Failed to load:', e);
@@ -57,7 +61,7 @@ export function SettingsView() {
 			userAgent: userAgent.trim() || 'reddit-feed-even/1.0',
 		};
 		const config = {
-			feed: { endpoint: feed, limit: 25 },
+			feed: { endpoint: feed, limit: 25, showMediaOnly },
 			cache: { durationMs: (Number.parseInt(cacheMins, 10) || 5) * 60 * 1000 },
 		};
 		localStorage.setItem(AUTH_KEY, JSON.stringify(auth));
@@ -115,6 +119,9 @@ export function SettingsView() {
 								value={cacheMins}
 								onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCacheMins(e.target.value)}
 							/>
+						</Field>
+						<Field label="Show posts with media-only" hint="Show posts that have media, even without body text.">
+							<Toggle checked={showMediaOnly} onChange={setShowMediaOnly} />
 						</Field>
 					</SettingsGroup>
 				</Card>
