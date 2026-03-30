@@ -6,14 +6,16 @@
 	"min_app_version": "0.1.0",
 	"min_sdk_version": "0.0.9",
 	"name": "Reddit Feed",
-	"package_id": "com.plungarini.redditfed",
+	"package_id": "com.plungarini.redditfeed",
 	"permissions": [
 		{
 			"desc": "Access network to fetch Reddit feeds",
 			"name": "network"
 		}
 	],
-	"supported_languages": ["en"],
-	"tagline": "Browse Reddit on your ER glasses",
-	"version": "1.0.0"
+	"supported_languages": [
+		"en"
+	],
+	"tagline": "Reddit. Now literally in front of you.",
+	"version": "0.1.0"
 }
