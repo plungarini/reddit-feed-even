@@ -1,9 +1,4 @@
-import {
-	EvenAppBridge,
-	RebuildPageContainer,
-	TextContainerProperty,
-	TextContainerUpgrade,
-} from '@evenrealities/even_hub_sdk';
+import { EvenAppBridge, RebuildPageContainer, TextContainerProperty } from '@evenrealities/even_hub_sdk';
 import { CachedPost } from '../../../core/types';
 import { BORDER_RADIUS } from '../../../shared/constants';
 import { fmtScore, normalizeWebText } from '../../../shared/utils';
@@ -13,8 +8,9 @@ export const FOOTER_CONTAINER_ID = POSTS_PER_PAGE + 1; // 5
 
 const POST_H = 64;
 const WIDTH = 576;
+const HEIGHT = 288;
 const FOOTER_Y = POSTS_PER_PAGE * POST_H;
-const FOOTER_H = 288;
+const FOOTER_H = 32;
 const MAX_POST_TITLE_LEN = 56;
 
 // ─── Double-scroll config ─────────────────────────────────────────────────────
@@ -28,6 +24,14 @@ export class FeedView {
 	private scrollPrimed: ScrollPrimed = 'none';
 	private scrollPrimedAt = 0;
 	private scrollPrimedTimer: ReturnType<typeof setTimeout> | null = null;
+
+	// State cache for rebuilds (needed by _updateFooter full-rebuild approach)
+	private _lastPosts: CachedPost[] = [];
+	private _lastPageIndex = 0;
+	private _lastHighlightedIndex = 0;
+	private _lastHasMore = false;
+	private _lastLoadingMore = false;
+	private _lastDotsCount = 3;
 
 	constructor(bridge: EvenAppBridge) {
 		this.bridge = bridge;
@@ -136,6 +140,14 @@ export class FeedView {
 		loadingMore: boolean,
 		dotsCount = 3,
 	): Promise<void> {
+		// Cache state for _updateFooter rebuilds
+		this._lastPosts = posts;
+		this._lastPageIndex = pageIndex;
+		this._lastHighlightedIndex = highlightedIndex;
+		this._lastHasMore = hasMore;
+		this._lastLoadingMore = loadingMore;
+		this._lastDotsCount = dotsCount;
+
 		const containers = this.buildContainers(posts, pageIndex, highlightedIndex, hasMore, loadingMore, dotsCount);
 
 		const rebuildParam = new RebuildPageContainer({
@@ -147,11 +159,6 @@ export class FeedView {
 			const ok = await this.bridge.rebuildPageContainer(rebuildParam);
 			if (!ok) {
 				throw new Error('rebuildPageContainer returned false (feed)');
-			}
-			// After a full rebuild, if primed, re-render the footer hint so it survives the rebuild
-			if (this.scrollPrimed !== 'none') {
-				const hintText = buildFooter(false, true, dotsCount);
-				this._updateFooter(hintText);
 			}
 		} catch (error) {
 			console.error('rebuildPageContainer failed (feed)', error);
@@ -172,7 +179,19 @@ export class FeedView {
 		const pagePosts = posts.slice(startIdx, startIdx + POSTS_PER_PAGE);
 		const totalPages = Math.max(1, Math.ceil(posts.length / POSTS_PER_PAGE));
 
-		const containers: TextContainerProperty[] = [];
+		const containers: TextContainerProperty[] = [
+			// ── Invisible Event Shield ─────────────────────────────────────────
+			new TextContainerProperty({
+				xPosition: 0,
+				yPosition: 0,
+				width: WIDTH,
+				height: HEIGHT,
+				isEventCapture: loadingMore ? 0 : 1,
+				content: '',
+				containerID: POSTS_PER_PAGE + 2,
+				containerName: 'event_shield',
+			}),
+		];
 
 		// ── Post rows (0 – 3) ────────────────────────────────────────────────────
 		for (let i = 0; i < POSTS_PER_PAGE; i++) {
@@ -201,9 +220,16 @@ export class FeedView {
 		const footerContent = buildFooter(loadingMore, this.scrollPrimed !== 'none', dotsCount);
 		const footerWidth = footerContent.length * 11;
 
+		let footerOffsetX = 123;
+		if (loadingMore) {
+			footerOffsetX = 148 + dotsCount;
+		} else if (this.scrollPrimed !== 'none') {
+			footerOffsetX = 126;
+		}
+
 		containers.push(
 			new TextContainerProperty({
-				xPosition: Math.floor((WIDTH - footerWidth) / 2),
+				xPosition: footerOffsetX,
 				yPosition: FOOTER_Y,
 				height: FOOTER_H,
 				width: footerWidth + 20,
@@ -214,17 +240,6 @@ export class FeedView {
 				containerName: 'footer',
 				isEventCapture: 0,
 				content: footerContent,
-			}),
-			// ── Invisible Event Shield ─────────────────────────────────────────
-			new TextContainerProperty({
-				xPosition: 0,
-				yPosition: 0,
-				width: WIDTH,
-				height: 288,
-				isEventCapture: loadingMore ? 0 : 1,
-				content: '',
-				containerID: POSTS_PER_PAGE + 2,
-				containerName: 'event_shield',
 			}),
 		);
 
@@ -238,20 +253,32 @@ export class FeedView {
 
 	/** Update only the footer text container via textContainerUpgrade */
 	private _updateFooter(text: string): void {
+		const containers = this.buildContainers(
+			this._lastPosts,
+			this._lastPageIndex,
+			this._lastHighlightedIndex,
+			this._lastHasMore,
+			this._lastLoadingMore,
+			this._lastDotsCount,
+		);
+
+		// Update footer content in the containers array
+		const footerContainer = containers.find((c) => c.containerID === FOOTER_CONTAINER_ID);
+		if (footerContainer) {
+			footerContainer.content = text;
+		}
+
+		const rebuildParam = new RebuildPageContainer({
+			containerTotalNum: containers.length,
+			textObject: containers,
+		});
+
 		this.bridge
-			.textContainerUpgrade(
-				new TextContainerUpgrade({
-					containerID: FOOTER_CONTAINER_ID,
-					containerName: 'footer',
-					contentOffset: 0,
-					contentLength: text.length,
-					content: text,
-				}),
-			)
+			.rebuildPageContainer(rebuildParam)
 			.then((ok) => {
-				if (!ok) console.warn('[FeedView] upgradeFooter returned false');
+				if (!ok) console.warn('[FeedView] rebuildFooter returned false');
 			})
-			.catch((err) => console.error('[FeedView] upgradeFooter failed:', err));
+			.catch((err) => console.error('[FeedView] rebuildFooter failed:', err));
 	}
 
 	// ─── Scroll state machine helpers ─────────────────────────────────────────
@@ -286,7 +313,11 @@ function formatPost(post: CachedPost): string {
 	const title = needsTruncate ? post.title.substring(0, MAX_POST_TITLE_LEN - 1) : post.title;
 
 	const normTruncate = (s: string) => {
-		const normStr = `> ${s.trim()}`;
+		const normStr = `> ${s
+			.trim()
+			.split('\n')
+			.map((s) => s.trim())
+			.join(' ')}`;
 		if (!needsTruncate) return normalizeWebText(normStr);
 		const last = normStr.at(-1);
 		if (!last || /[a-zA-Z0-9]/.test(last)) return normalizeWebText(normStr + '…');
@@ -297,7 +328,7 @@ function formatPost(post: CachedPost): string {
 }
 
 function buildFooter(loadingMore: boolean, primed: boolean, dotsCount = 3): string {
-	if (loadingMore) return `╭──  Loading feed${'…'.slice(0, dotsCount > 0 ? 1 : 0)}  ──╮`;
+	if (loadingMore) return `╭──  Loading feed${'.'.repeat(dotsCount)}  ──╮`;
 	if (primed) return `╭──  ↓ again → next page  ──╮`;
 	return `╭──  Scroll down to update  ──╮`;
 }

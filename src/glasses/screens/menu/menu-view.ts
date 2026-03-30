@@ -1,16 +1,3 @@
-/**
- * Menu View — Feed Type Selector
- *
- * Shown when the user double-clicks on the feed.
- * Renders two containers:
- *   1. Header  — short TextContainerProperty centred at top
- *   2. List    — ListContainerProperty with the 8 available endpoints
- *
- * Gestures (handled in main.ts):
- *   CLICK        → select highlighted endpoint
- *   DOUBLE_CLICK → exit menu, return to feed unchanged
- */
-
 import {
 	EvenAppBridge,
 	ListContainerProperty,
@@ -59,11 +46,11 @@ export class MenuView {
 
 	private buildHeader(): TextContainerProperty {
 		const text = '╭───────  Select your Feed  ───────╮';
-		const textWidth = text.length * 12;
+		const textWidth = text.length * 14;
 		return new TextContainerProperty({
-			xPosition: Math.floor((WIDTH - textWidth) / 2),
+			xPosition: 40,
 			yPosition: HEADER_Y,
-			width: WIDTH,
+			width: Math.ceil(textWidth),
 			height: HEADER_H,
 			borderWidth: 0,
 			paddingLength: 5,
@@ -83,7 +70,7 @@ export class MenuView {
 
 		const OFFSET = 60;
 		return new ListContainerProperty({
-			xPosition: 90,
+			xPosition: OFFSET,
 			yPosition: LIST_Y,
 			width: WIDTH - OFFSET * 2,
 			height: LIST_H,
