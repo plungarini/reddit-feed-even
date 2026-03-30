@@ -9,18 +9,16 @@ import {
 import { AuthManager } from './api/auth-manager';
 import { RateLimiter } from './api/rate-limiter';
 import { RedditClient } from './api/reddit-client';
-import { DEFAULT_CONFIG, ENDPOINTS, mergeConfig } from './core/config';
+import { ENDPOINTS } from './core/config';
+import { loadConfig } from './core/config-manager';
 import type { AppConfig, FeedEndpoint } from './core/types';
 import { UIManager } from './core/ui-manager';
-import { CommentView } from './features/comments/comment-view';
-import { DetailView } from './features/detail/detail-view';
-import { FeedView } from './features/feed/feed-view';
-import { MenuView } from './features/feed/menu-view';
-import { PostStore } from './features/feed/post-store';
+import { CommentView } from './glasses/screens/comments/comment-view';
+import { DetailView } from './glasses/screens/detail/detail-view';
+import { FeedView } from './glasses/screens/feed/feed-view';
+import { MenuView } from './glasses/screens/menu/menu-view';
+import { PostStore } from './glasses/store/post-store';
 import { getStringChunks } from './shared/utils';
-
-const CONFIG_KEY = 'reddit-feed-config';
-const AUTH_KEY = 'reddit-feed-auth';
 
 const LOAD_ANIM_MS = 300;
 
@@ -164,26 +162,16 @@ async function main() {
 		return;
 	}
 
-	// Auth check - token is optional
-	const authData = localStorage.getItem(AUTH_KEY);
-	const configData = localStorage.getItem(CONFIG_KEY);
-	const auth = authData ? JSON.parse(authData) : null;
-
-	// Proper config initialization: defaults < saved config < legacy auth data
-	const savedConfig = configData ? JSON.parse(configData) : {};
-	const config: AppConfig = mergeConfig(DEFAULT_CONFIG, savedConfig);
-
-	// Legacy auth override: ensure authData's token/session take precedence if found
-	if (auth?.tokenV2 && auth?.session) {
-		config.auth.tokenV2 = auth.tokenV2;
-		config.auth.session = auth.session;
-	}
+	// Load configuration (defaults < saved < auth overrides)
+	const config = loadConfig();
 
 	const hasAuth = !!(config.auth.tokenV2 && config.auth.session);
 	debugState({ hasAuth });
 
 	// Cache duration: read from config, min 60s
 	const cacheDurationMs = Math.max(60_000, config.cache.durationMs);
+
+	console.log('[RedditClient] Using API base URL:', config.api.baseUrl);
 
 	// Core managers
 	const authManager = new AuthManager(config.auth);
@@ -254,7 +242,7 @@ async function main() {
 		} else if (view === 'comments') {
 			handleCommentsEvent(type, postStore, uiManager, views.comment);
 		} else if (view === 'menu') {
-			handleMenuEvent(type, listEvent, postStore, uiManager);
+			handleMenuEvent(type, listEvent, postStore, uiManager, bridge);
 		}
 	});
 
@@ -341,6 +329,7 @@ function handleMenuEvent(
 	listEvent: { currentSelectItemIndex?: number; currentSelectItemName?: string } | undefined,
 	postStore: PostStore,
 	uiManager: UIManager,
+	bridge: Bridge,
 ): void {
 	const entry = uiManager.getCurrentEntry();
 	if (type === OsEventTypeList.SCROLL_BOTTOM_EVENT || type === OsEventTypeList.SCROLL_TOP_EVENT) {
@@ -360,7 +349,8 @@ function handleMenuEvent(
 			uiManager.updateCurrentContext({ pageIndex: 0, highlightIndex: 0 });
 		}
 	} else if (type === OsEventTypeList.DOUBLE_CLICK_EVENT) {
-		uiManager.goBack();
+		console.log('[Main] Menu double-click: showing exit confirmation');
+		bridge.shutDownPageContainer(1).catch(console.error);
 	}
 }
 

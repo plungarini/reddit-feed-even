@@ -65,7 +65,7 @@ function Layout() {
 	return (
 		<AppShell
 			header={<NavHeader title={title} />}
-			footer={<BottomNav activeId={location.pathname} onNavigate={navigate} />}
+			footer={<BottomNav activeId={location.pathname} onNavigate={(id) => navigate(id, { replace: true })} />}
 			className="max-w-md mx-auto"
 		>
 			<Outlet />

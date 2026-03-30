@@ -14,6 +14,7 @@
 
 import { RedditClient } from '../../api/reddit-client';
 import { CachedPost, FeedConfig, RedditComment } from '../../core/types';
+import { clamp } from '../../shared/utils';
 
 type PostStoreListener = () => void;
 
@@ -258,7 +259,7 @@ export class PostStore {
 	setHighlight(index: number): void {
 		const pagePosts = this.getCurrentPagePosts();
 		const lastPostIndex = Math.max(0, pagePosts.length - 1);
-		const clamped = Math.max(0, Math.min(index, lastPostIndex));
+		const clamped = clamp(index, 0, lastPostIndex);
 		if (clamped !== this.state.highlightedIndex) {
 			this.state.highlightedIndex = clamped;
 			this.notify();

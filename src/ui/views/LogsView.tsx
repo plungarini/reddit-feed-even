@@ -35,10 +35,28 @@ export function LogsView() {
 		}
 	}
 
-	function copyLogs() {
+	async function copyLogs() {
 		const text = (globalThis.__debugLogs ?? []).map((l) => `[${l.level.toUpperCase()}] ${l.msg}`).join('\n');
-		navigator.clipboard.writeText(text);
-		setToast('Copied to clipboard');
+		try {
+			if (navigator.clipboard && navigator.clipboard.writeText) {
+				await navigator.clipboard.writeText(text);
+				setToast('Copied to clipboard');
+			} else {
+				// Fallback for environments without clipboard API
+				const textarea = document.createElement('textarea');
+				textarea.value = text;
+				textarea.style.position = 'fixed';
+				textarea.style.opacity = '0';
+				document.body.appendChild(textarea);
+				textarea.select();
+				document.execCommand('copy');
+				document.body.removeChild(textarea);
+				setToast('Copied to clipboard');
+			}
+		} catch (e) {
+			console.error('[LogsView] Failed to copy:', e);
+			setToast('Copy failed - see console');
+		}
 		setTimeout(() => setToast(''), 2000);
 	}
 

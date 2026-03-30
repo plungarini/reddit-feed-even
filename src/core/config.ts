@@ -13,7 +13,6 @@ export const DEFAULT_AUTH: AuthConfig = {
 	tokenV2: ENV.REDDIT_TOKEN_V2 || '',
 	session: '',
 	userAgent: ENV.REDDIT_USER_AGENT || 'reddit-feed-even/1.0 (Even Realities)',
-	proxyUrl: ENV.REDDIT_PROXY_URL || '',
 };
 
 export const DEFAULT_API: ApiConfig = {

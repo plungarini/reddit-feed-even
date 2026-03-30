@@ -6,6 +6,8 @@
  */
 
 import { ApiConfig, FeedConfig, RedditClientInterface, RedditComment, RedditListing, RedditPost } from '../core/types';
+import { MAX_UPGRADE_LENGTH } from '../shared/constants';
+import { clamp } from '../shared/utils';
 import { AuthManager } from './auth-manager';
 import { RateLimiter } from './rate-limiter';
 
@@ -64,18 +66,18 @@ export class RedditClient implements RedditClientInterface {
 			if (value !== undefined && value !== null) url.searchParams.set(key, value);
 		}
 
-		console.log(`[RedditClient] GET ${url.pathname}${url.search} (retry=${isRetry})`);
+		console.log(`[RedditClient] GET ${url.toString()} (retry=${isRetry})`);
 
 		let response: Response;
 		try {
 			response = await fetch(url.toString(), {
 				headers: this.proxyHeaders(),
-				signal: AbortSignal.timeout(15_000),
+				signal: AbortSignal.timeout(30_000),
 			});
 		} catch (err) {
 			const name = err instanceof Error ? err.name : '';
 			if (name === 'TimeoutError' || name === 'AbortError') {
-				throw new Error(`Request timed out (15s). URL: ${url.pathname}`);
+				throw new Error(`Request timed out (30s). URL: ${url.pathname}`);
 			}
 			throw new Error(`Network error: ${err instanceof Error ? err.message : String(err)}`);
 		}
@@ -85,7 +87,7 @@ export class RedditClient implements RedditClientInterface {
 		if (!response.ok) {
 			if (response.status === 429 && !isRetry) {
 				const resetHeader = response.headers.get('x-ratelimit-reset') || response.headers.get('Retry-After');
-				const resetSeconds = resetHeader ? Number.parseInt(resetHeader, 10) : 60;
+				const resetSeconds = (resetHeader ? Number.parseInt(resetHeader, 10) : 60) + 5; // +5s safety buffer
 
 				if (resetSeconds <= 120) {
 					console.warn(`[RedditClient] 429 Rate Limit. Waiting ${resetSeconds}s before retry...`);
@@ -127,7 +129,8 @@ export class RedditClient implements RedditClientInterface {
 		}
 
 		const showMediaOnly = config.showMediaOnly;
-		const normLimit = Math.min(500, Math.min(100, config.limit) + (showMediaOnly ? 0 : 100));
+		const clampedLimit = clamp(config.limit, 25, 100);
+		const normLimit = clampedLimit + (showMediaOnly ? 0 : clampedLimit * 2);
 
 		const params: Record<string, string> = {
 			limit: String(normLimit),
@@ -180,7 +183,7 @@ export class RedditClient implements RedditClientInterface {
 		for (const child of children) {
 			if (child.kind !== 't1') continue;
 			if (child.data.author === '[deleted]' || child.data.body === '[deleted]') continue;
-			if (child.data.body && child.data.body.length >= 1900) continue;
+			if (child.data.body && child.data.body.length >= MAX_UPGRADE_LENGTH) continue;
 
 			result.push({
 				id: child.data.id,
@@ -228,7 +231,7 @@ export class RedditClient implements RedditClientInterface {
 			permalink: raw.permalink,
 			selftext: raw.selftext || undefined,
 			author: raw.author,
-			score: raw.score || raw.data.ups,
+			score: raw.score || raw.ups,
 			upvoteRatio: raw.upvote_ratio,
 			numComments: raw.num_comments,
 			createdUtc: raw.created_utc,

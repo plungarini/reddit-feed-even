@@ -18,8 +18,8 @@ import {
 	RebuildPageContainer,
 	TextContainerProperty,
 } from '@evenrealities/even_hub_sdk';
-import { ENDPOINTS } from '../../core/config';
-import { FeedEndpoint } from '../../core/types';
+import { ENDPOINTS } from '../../../core/config';
+import { FeedEndpoint } from '../../../core/types';
 
 const WIDTH = 576;
 
@@ -77,7 +77,7 @@ export class MenuView {
 	private buildList(currentEndpoint: FeedEndpoint): ListContainerProperty {
 		const itemNames = Object.entries(ENDPOINTS).map(([key, value]) => {
 			const active = key === currentEndpoint;
-			const indicator = active ? '>  ' : '   ';
+			const indicator = active ? '>  ' : '    ';
 			return `${indicator}${value.name}  -  ${value.description}`;
 		});
 
