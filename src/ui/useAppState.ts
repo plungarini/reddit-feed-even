@@ -1,9 +1,16 @@
 import { useEffect, useState } from 'react';
 
+interface LogEntry {
+	level: 'log' | 'warn' | 'error';
+	msg: string;
+	ts: number;
+	details?: any[];
+}
+
 declare global {
 	var __refreshDebug: (() => void) | undefined;
 	var __appState: any;
-	var __debugLogs: any[];
+	var __debugLogs: LogEntry[];
 }
 
 export function useAppState() {

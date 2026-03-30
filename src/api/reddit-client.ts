@@ -76,15 +76,21 @@ export class RedditClient implements RedditClientInterface {
 			});
 		} catch (err) {
 			const name = err instanceof Error ? err.name : '';
+			const errorDetails = err instanceof Error ? err : new Error(String(err));
 			if (name === 'TimeoutError' || name === 'AbortError') {
+				console.error('[RedditClient] Request timeout:', url.toString(), errorDetails);
 				throw new Error(`Request timed out (30s). URL: ${url.pathname}`);
 			}
+			console.error('[RedditClient] Network error:', url.toString(), errorDetails);
 			throw new Error(`Network error: ${err instanceof Error ? err.message : String(err)}`);
 		}
 
 		this.rateLimiter.updateFromHeaders(response.headers);
 
 		if (!response.ok) {
+			// Clone response for potential error logging before we retry or throw
+			const responseClone = response.clone();
+			
 			if (response.status === 429 && !isRetry) {
 				const resetHeader = response.headers.get('x-ratelimit-reset') || response.headers.get('Retry-After');
 				const resetSeconds = (resetHeader ? Number.parseInt(resetHeader, 10) : 60) + 5; // +5s safety buffer
@@ -98,9 +104,15 @@ export class RedditClient implements RedditClientInterface {
 			}
 
 			if (response.status === 401 || response.status === 403) {
-				throw new Error(`Authentication failed (${response.status}). Check Reddit tokens.`);
+				const err = new Error(`Authentication failed (${response.status}). Check Reddit tokens.`);
+				console.error('[RedditClient] Auth error response:', responseClone);
+				throw err;
 			}
-			throw new Error(`Reddit API error: ${response.status} ${response.statusText}`);
+			
+			// Log detailed error before throwing
+			const errorMsg = `Reddit API error: ${response.status} ${response.statusText}`;
+			console.error('[RedditClient] Error response:', responseClone);
+			throw new Error(errorMsg);
 		}
 
 		return response.json() as T;
