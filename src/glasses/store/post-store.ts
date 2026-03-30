@@ -153,8 +153,13 @@ export class PostStore {
 			this.cacheTimestamp = Date.now();
 			console.log(`[PostStore] Fetched ${posts.length} posts, cached for ${Math.round(this.cacheDurationMs / 1000)}s`);
 		} catch (err) {
-			this.state.error = err instanceof Error ? err.message : 'Failed to load feed';
+			const errorMsg = err instanceof Error ? err.message : 'Failed to load feed';
+			this.state.error = errorMsg;
 			console.error('[PostStore] loadFeed error:', err);
+			// Log additional context for debugging
+			if (err instanceof Error && err.cause) {
+				console.error('[PostStore] Error cause:', err.cause);
+			}
 		} finally {
 			this.state.loading = false;
 			this.clearRetryCountdown();

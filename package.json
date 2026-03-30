@@ -50,7 +50,7 @@
 		"dev": "concurrently -n QR,VITE,SERVER -c cyan,green,yellow \"npm run qr\" \"vite --host 0.0.0.0 --port 5173\" \"npm run server\"",
 		"pack": "npm run build && evenhub pack app.json dist -o reddit-feed.ehpk",
 		"qr": "node scripts/qr.mjs",
-		"server": "wrangler dev --port 3001",
+		"server": "wrangler dev --port 3001 --ip 0.0.0.0",
 		"typecheck": "tsc --noEmit"
 	},
 	"type": "module",
