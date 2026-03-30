@@ -5,8 +5,8 @@
  * Single source of truth for the API base URL (config.api.baseUrl).
  */
 
+import { DEFAULT_CONFIG, mergeConfig } from './config';
 import type { AppConfig, AuthConfig, FeedConfig } from './types';
-import { DEFAULT_CONFIG, ENDPOINTS, mergeConfig } from './config';
 
 const AUTH_KEY = 'reddit-feed-auth';
 const CONFIG_KEY = 'reddit-feed-config';
@@ -21,8 +21,6 @@ export function loadConfig(): AppConfig {
 	const savedConfig: Partial<AppConfig> = configData ? JSON.parse(configData) : {};
 	const savedAuth: Partial<AuthConfig> = authData ? JSON.parse(authData) : {};
 
-	console.log('[ConfigManager] Raw saved config:', savedConfig);
-	console.log('[ConfigManager] Raw saved auth:', savedAuth);
 	console.log('[ConfigManager] Default API base URL:', DEFAULT_CONFIG.api.baseUrl);
 
 	// Start with defaults, merge saved config
