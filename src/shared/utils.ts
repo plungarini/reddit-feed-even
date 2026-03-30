@@ -134,3 +134,10 @@ export function fmtTimeAgo(createdUtc: number): string {
 	if (secs < 31536000) return `${Math.floor(secs / 2592000)}mo`;
 	return `${Math.floor(secs / 31536000)}y`;
 }
+
+/**
+ * Clamp a number between min and max (inclusive)
+ */
+export function clamp(value: number, min: number, max: number): number {
+	return Math.max(min, Math.min(max, value));
+}
