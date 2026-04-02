@@ -203,6 +203,28 @@ function LinkPreviewCard({ post, apiBaseUrl }: { post: ActivePostPreview; apiBas
 	);
 }
 
+function GallerySlider({ images }: { images: string[] }) {
+	return (
+		<div className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2">
+			{images.map((src, index) => (
+				<div
+					key={`gallery-slide-${index}`}
+					className="w-fit max-w-[88%] shrink-0 snap-center overflow-hidden rounded-[6px] border border-border-light bg-surface-light"
+				>
+					<div className="flex max-h-[240px] items-center justify-center bg-surface-light">
+						<img
+							src={src}
+							alt={`Gallery image ${index + 1}`}
+							className="block max-h-[240px] w-auto max-w-full object-contain"
+							loading="lazy"
+						/>
+					</div>
+				</div>
+			))}
+		</div>
+	);
+}
+
 function PostPreview({ post, apiBaseUrl }: { post: ActivePostPreview; apiBaseUrl: string | null }) {
 	const normalizedBody = post.selftext ? normalizeWebText(post.selftext) : '';
 	const media = getMediaPreview(post);
@@ -223,21 +245,7 @@ function PostPreview({ post, apiBaseUrl }: { post: ActivePostPreview; apiBaseUrl
 					</div>
 					<h2 className="text-[20px] leading-tight tracking-[-0.2px] text-text break-words">{post.title}</h2>
 					{post.contentType === 'gallery' && galleryImages.length > 0 ? (
-						<div className={galleryImages.length === 1 ? '' : 'grid grid-cols-2 gap-2'}>
-							{galleryImages.map((src, index) => (
-								<div
-									key={`${post.id}-gallery-${index}`}
-									className="overflow-hidden rounded-[6px] border border-border-light bg-surface-light"
-								>
-									<img
-										src={src}
-										alt={`Gallery image ${index + 1}`}
-										className="h-auto w-full object-cover"
-										loading="lazy"
-									/>
-								</div>
-							))}
-						</div>
+						<GallerySlider images={galleryImages} />
 					) : media ? (
 						<div className="overflow-hidden rounded-[6px] border border-border-light bg-surface-light">
 							<img src={media.src} alt={media.label} className="h-auto w-full object-cover" loading="lazy" />
