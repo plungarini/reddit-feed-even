@@ -1,6 +1,19 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
+import type { PluginOption } from 'vite';
+
+const evenHudFullReload = (): PluginOption => ({
+	name: 'even-hud-full-reload',
+	apply: 'serve',
+	handleHotUpdate({ server, file }) {
+		if (file.endsWith('index.html') || file.includes(`${String.raw`\\`}src${String.raw`\\`}`) || file.includes('/src/')) {
+			// Force a full page refresh so the Even bridge reinitializes and redraws the HUD.
+			server.ws.send({ type: 'full-reload', path: '*' });
+			return [];
+		}
+	},
+});
 
 const getBaseUrl = (command: string) => {
 	if (command === 'serve') return './';
@@ -11,7 +24,7 @@ const getBaseUrl = (command: string) => {
 };
 
 export default defineConfig(({ command }) => ({
-	plugins: [react(), tailwindcss()],
+	plugins: [react(), tailwindcss(), evenHudFullReload()],
 	base: getBaseUrl(command),
 	server: {
 		host: true,
