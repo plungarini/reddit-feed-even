@@ -7,6 +7,7 @@
 
 import { DEFAULT_CONFIG, mergeConfig } from './config';
 import type { AppConfig, AuthConfig, FeedConfig } from './types';
+import { getStoredItem, removeStoredItem, setStoredItem } from '../shared/storage';
 
 const AUTH_KEY = 'reddit-feed-auth';
 const CONFIG_KEY = 'reddit-feed-config';
@@ -15,9 +16,8 @@ const CONFIG_KEY = 'reddit-feed-config';
  * Load the complete application configuration
  * Merges: Defaults < Saved Config < Auth (from separate key)
  */
-export function loadConfig(): AppConfig {
-	const configData = localStorage.getItem(CONFIG_KEY);
-	const authData = localStorage.getItem(AUTH_KEY);
+export async function loadConfig(): Promise<AppConfig> {
+	const [configData, authData] = await Promise.all([getStoredItem(CONFIG_KEY), getStoredItem(AUTH_KEY)]);
 	const savedConfig: Partial<AppConfig> = configData ? JSON.parse(configData) : {};
 	const savedAuth: Partial<AuthConfig> = authData ? JSON.parse(authData) : {};
 
@@ -41,37 +41,37 @@ export function loadConfig(): AppConfig {
 /**
  * Save auth configuration
  */
-export function saveAuth(auth: AuthConfig): void {
-	localStorage.setItem(AUTH_KEY, JSON.stringify(auth));
+export async function saveAuth(auth: AuthConfig): Promise<void> {
+	await setStoredItem(AUTH_KEY, JSON.stringify(auth));
 }
 
 /**
  * Save the complete configuration
  */
-export function saveConfig(config: Partial<AppConfig>): void {
-	const existing = localStorage.getItem(CONFIG_KEY);
+export async function saveConfig(config: Partial<AppConfig>): Promise<void> {
+	const existing = await getStoredItem(CONFIG_KEY);
 	const existingConfig = existing ? JSON.parse(existing) : {};
 	const merged = { ...existingConfig, ...config };
 	console.log('[ConfigManager] Saving config:', merged);
-	localStorage.setItem(CONFIG_KEY, JSON.stringify(merged));
+	await setStoredItem(CONFIG_KEY, JSON.stringify(merged));
 }
 
 /**
  * Save the complete settings from SettingsView
  */
-export function saveSettings(options: {
+export async function saveSettings(options: {
 	auth: AuthConfig;
 	feed: FeedConfig;
 	cacheDurationMs: number;
 	apiBaseUrl: string;
-}): void {
+}): Promise<void> {
 	const { auth, feed, cacheDurationMs, apiBaseUrl } = options;
 
 	// Save auth (no proxyUrl anymore)
-	saveAuth(auth);
+	await saveAuth(auth);
 
 	// Save config with api.baseUrl
-	saveConfig({
+	await saveConfig({
 		feed,
 		cache: { durationMs: cacheDurationMs },
 		api: { baseUrl: apiBaseUrl },
@@ -81,32 +81,31 @@ export function saveSettings(options: {
 /**
  * Get the effective API base URL
  */
-export function getApiBaseUrl(): string {
-	const config = loadConfig();
+export async function getApiBaseUrl(): Promise<string> {
+	const config = await loadConfig();
 	return config.api.baseUrl;
 }
 
 /**
  * Clear all configuration
  */
-export function clearConfig(): void {
-	localStorage.removeItem(AUTH_KEY);
-	localStorage.removeItem(CONFIG_KEY);
+export async function clearConfig(): Promise<void> {
+	await Promise.all([removeStoredItem(AUTH_KEY), removeStoredItem(CONFIG_KEY)]);
 }
 
 /**
  * Load auth configuration (for SettingsView)
  */
-export function loadAuth(): Partial<AuthConfig> {
-	const authData = localStorage.getItem(AUTH_KEY);
+export async function loadAuth(): Promise<Partial<AuthConfig>> {
+	const authData = await getStoredItem(AUTH_KEY);
 	return authData ? JSON.parse(authData) : {};
 }
 
 /**
  * Load API configuration (for SettingsView)
  */
-export function loadApiConfig(): { baseUrl?: string } {
-	const configData = localStorage.getItem(CONFIG_KEY);
+export async function loadApiConfig(): Promise<{ baseUrl?: string }> {
+	const configData = await getStoredItem(CONFIG_KEY);
 	const config = configData ? JSON.parse(configData) : {};
 	return config.api || {};
 }
@@ -114,8 +113,8 @@ export function loadApiConfig(): { baseUrl?: string } {
 /**
  * Load feed configuration (for SettingsView)
  */
-export function loadFeedConfig(): Partial<FeedConfig> {
-	const configData = localStorage.getItem(CONFIG_KEY);
+export async function loadFeedConfig(): Promise<Partial<FeedConfig>> {
+	const configData = await getStoredItem(CONFIG_KEY);
 	const config = configData ? JSON.parse(configData) : {};
 	return config.feed || {};
 }
@@ -123,8 +122,8 @@ export function loadFeedConfig(): Partial<FeedConfig> {
 /**
  * Load cache configuration (for SettingsView)
  */
-export function loadCacheConfig(): { durationMs?: number } {
-	const configData = localStorage.getItem(CONFIG_KEY);
+export async function loadCacheConfig(): Promise<{ durationMs?: number }> {
+	const configData = await getStoredItem(CONFIG_KEY);
 	const config = configData ? JSON.parse(configData) : {};
 	return config.cache || {};
 }

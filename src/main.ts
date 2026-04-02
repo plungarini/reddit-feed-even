@@ -163,7 +163,7 @@ async function main() {
 	}
 
 	// Load configuration (defaults < saved < auth overrides)
-	const config = loadConfig();
+	const config = await loadConfig();
 
 	const hasAuth = !!(config.auth.tokenV2 && config.auth.session);
 	debugState({ hasAuth });

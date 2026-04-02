@@ -270,7 +270,7 @@ async function extractLink(
 
 	try {
 		// Check client-side cache first
-		const cached = getCachedPreview(url);
+		const cached = await getCachedPreview(url);
 		if (cached) {
 			console.log(`[DetailView] Client cache hit for: ${url}`);
 			return {
@@ -298,7 +298,7 @@ async function extractLink(
 
 			// Store in client cache
 			if (data.title || data.description) {
-				setCachedPreview(url, {
+				await setCachedPreview(url, {
 					title: data.title,
 					description: data.description,
 				});
