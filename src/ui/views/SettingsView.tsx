@@ -22,9 +22,11 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
 
 function clearAll() {
 	if (confirm('Reset all settings and auth data?')) {
-		clearConfig();
-		clearPreviewCache();
-		globalThis.location.reload();
+		void (async () => {
+			await clearConfig();
+			await clearPreviewCache();
+			globalThis.location.reload();
+		})();
 	}
 }
 
@@ -44,34 +46,38 @@ export function SettingsView() {
 	const [userAgent, setUserAgent] = useState('reddit-feed-even/1.0');
 
 	useEffect(() => {
-		try {
-			// Use config manager to load settings
-			const auth = loadAuth();
-			const apiConfig = loadApiConfig();
-			const feedConfig = loadFeedConfig();
-			const cacheConfig = loadCacheConfig();
+		void (async () => {
+			try {
+				// Use config manager to load settings
+				const [auth, apiConfig, feedConfig, cacheConfig] = await Promise.all([
+					loadAuth(),
+					loadApiConfig(),
+					loadFeedConfig(),
+					loadCacheConfig(),
+				]);
 
-			if (auth.tokenV2) setToken(auth.tokenV2);
-			if (auth.session) setSession(auth.session);
-			if (auth.userAgent) setUserAgent(auth.userAgent);
+				if (auth.tokenV2) setToken(auth.tokenV2);
+				if (auth.session) setSession(auth.session);
+				if (auth.userAgent) setUserAgent(auth.userAgent);
 
-			// Load proxy URL from api.baseUrl (or fallback to env)
-			if (apiConfig.baseUrl) setProxyUrl(apiConfig.baseUrl);
-			else if (ENV_PROXY_URL) setProxyUrl(ENV_PROXY_URL);
+				// Load proxy URL from api.baseUrl (or fallback to env)
+				if (apiConfig.baseUrl) setProxyUrl(apiConfig.baseUrl);
+				else if (ENV_PROXY_URL) setProxyUrl(ENV_PROXY_URL);
 
-			if (feedConfig.endpoint) setFeed(feedConfig.endpoint);
-			if (feedConfig.showMediaOnly !== undefined) setShowMediaOnly(feedConfig.showMediaOnly);
+				if (feedConfig.endpoint) setFeed(feedConfig.endpoint);
+				if (feedConfig.showMediaOnly !== undefined) setShowMediaOnly(feedConfig.showMediaOnly);
 
-			if (cacheConfig.durationMs) {
-				const mins = Math.floor(cacheConfig.durationMs / 60000);
-				setCacheMins(String(clamp(mins, MIN_CACHE_MINUTES, MAX_CACHE_MINUTES)));
+				if (cacheConfig.durationMs) {
+					const mins = Math.floor(cacheConfig.durationMs / 60000);
+					setCacheMins(String(clamp(mins, MIN_CACHE_MINUTES, MAX_CACHE_MINUTES)));
+				}
+			} catch (e) {
+				console.warn('[Settings] Failed to load:', e);
 			}
-		} catch (e) {
-			console.warn('[Settings] Failed to load:', e);
-		}
+		})();
 	}, []);
 
-	function handleSaveSettings() {
+	async function handleSaveSettings() {
 		const trimmedProxy = proxyUrl.trim();
 		const finalProxyUrl = trimmedProxy || ENV_PROXY_URL || 'https://reddit-feed-even.plungarini.workers.dev';
 
@@ -91,10 +97,10 @@ export function SettingsView() {
 		};
 
 		// Sync link preview cache TTL with feed cache duration
-		setPreviewCacheTtl(cacheDurationMs);
+		await setPreviewCacheTtl(cacheDurationMs);
 
 		// Save via config manager
-		saveSettings({
+		await saveSettings({
 			auth,
 			feed: feedConfig,
 			cacheDurationMs,
@@ -204,10 +210,12 @@ export function SettingsView() {
 					<Button
 						variant="default"
 						onClick={() => {
-							clearPreviewCache();
-							clearExpiredEntries();
-							setToast('Caches cleared');
-							setTimeout(() => globalThis.location.reload(), 500);
+							void (async () => {
+								await clearPreviewCache();
+								await clearExpiredEntries();
+								setToast('Caches cleared');
+								setTimeout(() => globalThis.location.reload(), 500);
+							})();
 						}}
 						className="flex-1"
 					>

@@ -2,7 +2,7 @@
  * Link Preview Cache
  *
  * Client-side caching for link preview results with configurable TTL.
- * Uses localStorage for persistence across sessions.
+ * Uses shared storage for persistence across sessions.
  *
  * Cache constraints:
  * - Default: 5 minutes
@@ -11,6 +11,7 @@
  */
 
 import { clamp } from '../shared/utils';
+import { getStoredItem, removeStoredItem, setStoredItem } from '../shared/storage';
 
 export const PREVIEW_CACHE_CONFIG = {
 	/** Default cache duration: 5 minutes in milliseconds */
@@ -48,11 +49,11 @@ export function clampPreviewCacheTtl(ttlMs: number): number {
 }
 
 /**
- * Get the configured cache TTL from localStorage
+ * Get the configured cache TTL from shared storage
  */
-export function getPreviewCacheTtl(): number {
+export async function getPreviewCacheTtl(): Promise<number> {
 	try {
-		const stored = localStorage.getItem(STORAGE_KEY_TTL);
+		const stored = await getStoredItem(STORAGE_KEY_TTL);
 		if (stored) {
 			const parsed = parseInt(stored, 10);
 			if (!isNaN(parsed)) {
@@ -60,7 +61,7 @@ export function getPreviewCacheTtl(): number {
 			}
 		}
 	} catch {
-		// localStorage not available
+		// storage not available
 	}
 	return PREVIEW_CACHE_CONFIG.DEFAULT_TTL_MS;
 }
@@ -68,55 +69,40 @@ export function getPreviewCacheTtl(): number {
 /**
  * Set the cache TTL (clamped to valid range)
  */
-export function setPreviewCacheTtl(ttlMs: number): void {
+export async function setPreviewCacheTtl(ttlMs: number): Promise<void> {
 	try {
 		const clamped = clampPreviewCacheTtl(ttlMs);
-		localStorage.setItem(STORAGE_KEY_TTL, String(clamped));
+		await setStoredItem(STORAGE_KEY_TTL, String(clamped));
 	} catch {
-		// localStorage not available
+		// storage not available
 	}
 }
 
 /**
- * Load cache from localStorage
+ * Load cache from shared storage
  */
-function loadCache(): CacheStorage {
+async function loadCache(): Promise<CacheStorage> {
 	try {
-		const stored = localStorage.getItem(STORAGE_KEY);
+		const stored = await getStoredItem(STORAGE_KEY);
 		if (stored) {
 			return JSON.parse(stored) as CacheStorage;
 		}
 	} catch {
-		// localStorage not available or corrupt
+		// storage not available or corrupt
 	}
 	return {};
 }
 
 /**
- * Save cache to localStorage
+ * Save cache to shared storage
  */
-function saveCache(cache: CacheStorage): void {
+async function saveCache(cache: CacheStorage): Promise<void> {
 	try {
-		localStorage.setItem(STORAGE_KEY, JSON.stringify(cache));
+		await setStoredItem(STORAGE_KEY, JSON.stringify(cache));
 	} catch {
-		// localStorage not available or quota exceeded
+		// storage not available or quota exceeded
 		// Clear old entries if quota exceeded
-		if (isQuotaExceededError()) {
-			clearExpiredEntries();
-		}
-	}
-}
-
-/**
- * Check if error is quota exceeded
- */
-function isQuotaExceededError(): boolean {
-	try {
-		localStorage.setItem('__test__', 'test');
-		localStorage.removeItem('__test__');
-		return false;
-	} catch (e) {
-		return true;
+		await clearExpiredEntries();
 	}
 }
 
@@ -130,8 +116,8 @@ function normalizeUrl(url: string): string {
 /**
  * Get cached preview for URL if not expired
  */
-export function getCachedPreview(url: string): CachedPreview | null {
-	const cache = loadCache();
+export async function getCachedPreview(url: string): Promise<CachedPreview | null> {
+	const cache = await loadCache();
 	const key = normalizeUrl(url);
 	const entry = cache[key];
 
@@ -141,7 +127,7 @@ export function getCachedPreview(url: string): CachedPreview | null {
 	if (Date.now() > entry.expiresAt) {
 		// Remove expired entry
 		delete cache[key];
-		saveCache(cache);
+		await saveCache(cache);
 		return null;
 	}
 
@@ -151,10 +137,10 @@ export function getCachedPreview(url: string): CachedPreview | null {
 /**
  * Store preview in cache
  */
-export function setCachedPreview(url: string, data: Omit<CachedPreview, 'url' | 'cachedAt'>): void {
-	const cache = loadCache();
+export async function setCachedPreview(url: string, data: Omit<CachedPreview, 'url' | 'cachedAt'>): Promise<void> {
+	const cache = await loadCache();
 	const key = normalizeUrl(url);
-	const ttl = getPreviewCacheTtl();
+	const ttl = await getPreviewCacheTtl();
 
 	cache[key] = {
 		data: {
@@ -165,32 +151,32 @@ export function setCachedPreview(url: string, data: Omit<CachedPreview, 'url' | 
 		expiresAt: Date.now() + ttl,
 	};
 
-	saveCache(cache);
+	await saveCache(cache);
 }
 
 /**
  * Check if preview is cached and valid
  */
-export function hasCachedPreview(url: string): boolean {
-	return getCachedPreview(url) !== null;
+export async function hasCachedPreview(url: string): Promise<boolean> {
+	return (await getCachedPreview(url)) !== null;
 }
 
 /**
  * Clear all cached previews
  */
-export function clearPreviewCache(): void {
+export async function clearPreviewCache(): Promise<void> {
 	try {
-		localStorage.removeItem(STORAGE_KEY);
+		await removeStoredItem(STORAGE_KEY);
 	} catch {
-		// localStorage not available
+		// storage not available
 	}
 }
 
 /**
  * Clear expired entries from cache
  */
-export function clearExpiredEntries(): void {
-	const cache = loadCache();
+export async function clearExpiredEntries(): Promise<void> {
+	const cache = await loadCache();
 	const now = Date.now();
 	let modified = false;
 
@@ -202,15 +188,15 @@ export function clearExpiredEntries(): void {
 	}
 
 	if (modified) {
-		saveCache(cache);
+		await saveCache(cache);
 	}
 }
 
 /**
  * Get cache statistics
  */
-export function getCacheStats(): { total: number; expired: number } {
-	const cache = loadCache();
+export async function getCacheStats(): Promise<{ total: number; expired: number }> {
+	const cache = await loadCache();
 	const now = Date.now();
 	let expired = 0;
 
