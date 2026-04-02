@@ -11,22 +11,25 @@ import { clamp } from '../shared/utils';
 import { AuthManager } from './auth-manager';
 import { RateLimiter } from './rate-limiter';
 
+export class RedditRateLimitError extends Error {
+	readonly retryAfterSeconds: number;
+
+	constructor(retryAfterSeconds: number) {
+		super(`Reddit API rate limit hit. Retry in ${retryAfterSeconds}s.`);
+		this.name = 'RedditRateLimitError';
+		this.retryAfterSeconds = retryAfterSeconds;
+	}
+}
+
 export class RedditClient implements RedditClientInterface {
 	private readonly auth: AuthManager;
 	private readonly rateLimiter: RateLimiter;
 	private readonly apiConfig: ApiConfig;
 
-	/** Proxy base URL — auto-detects LAN IP or uses configured remote Worker. */
-	private onRateLimit?: (seconds: number) => void;
-
 	constructor(auth: AuthManager, rateLimiter: RateLimiter, apiConfig: ApiConfig) {
 		this.auth = auth;
 		this.rateLimiter = rateLimiter;
 		this.apiConfig = apiConfig;
-	}
-
-	setRateLimitCallback(cb: (seconds: number) => void): void {
-		this.onRateLimit = cb;
 	}
 
 	async initialize(): Promise<void> {
@@ -91,16 +94,10 @@ export class RedditClient implements RedditClientInterface {
 			// Clone response for potential error logging before we retry or throw
 			const responseClone = response.clone();
 			
-			if (response.status === 429 && !isRetry) {
-				const resetHeader = response.headers.get('x-ratelimit-reset') || response.headers.get('Retry-After');
-				const resetSeconds = (resetHeader ? Number.parseInt(resetHeader, 10) : 60) + 5; // +5s safety buffer
-
-				if (resetSeconds <= 120) {
-					console.warn(`[RedditClient] 429 Rate Limit. Waiting ${resetSeconds}s before retry...`);
-					this.onRateLimit?.(resetSeconds);
-					await new Promise((resolve) => setTimeout(resolve, resetSeconds * 1000 + 500));
-					return this.get<T>(path, params, true);
-				}
+			if (response.status === 429) {
+				const resetSeconds = getRetryDelaySeconds(response.headers, this.rateLimiter.getState().resetSeconds || 60);
+				console.warn(`[RedditClient] 429 Rate Limit. Retry in ${resetSeconds}s.`);
+				throw new RedditRateLimitError(resetSeconds);
 			}
 
 			if (response.status === 401 || response.status === 403) {
@@ -231,8 +228,8 @@ export class RedditClient implements RedditClientInterface {
 			contentType = 'gallery';
 		}
 
-		// Reddit encodes preview URLs with &amp; — decode for direct use
-		const preview = raw.preview?.images?.[0]?.source?.url?.replaceAll('&amp;', '&');
+		const preview = this.decodeRedditMediaUrl(raw.preview?.images?.[0]?.source?.url);
+		const galleryImages = this.extractGalleryImages(raw);
 
 		return {
 			id: raw.id,
@@ -250,8 +247,73 @@ export class RedditClient implements RedditClientInterface {
 			contentType,
 			thumbnail: raw.thumbnail,
 			preview,
+			galleryImages,
 			flair: raw.link_flair_text,
 			isNsfw: raw.over_18,
 		};
 	}
+
+	private extractGalleryImages(raw: any): string[] | undefined {
+		const mediaMetadata = raw.media_metadata ?? {};
+		const items = Array.isArray(raw.gallery_data?.items) ? raw.gallery_data.items : [];
+		const images = items
+			.map((item: { media_id?: string }) => {
+				const media = item?.media_id ? mediaMetadata[item.media_id] : null;
+				const source = media?.s?.u ?? media?.p?.[media?.p?.length - 1]?.u;
+				return this.decodeRedditMediaUrl(source);
+			})
+			.filter((url: string | undefined): url is string => Boolean(url));
+
+		if (images.length > 0) return images;
+		return collectPreviewImages(raw.preview?.images);
+	}
+
+	private decodeRedditMediaUrl(url?: string): string | undefined {
+		if (!url || typeof url !== 'string') return undefined;
+		return url.replaceAll('&amp;', '&');
+	}
+}
+
+function getRetryDelaySeconds(headers: Headers, fallbackSeconds: number): number {
+	const retryAfter = headers.get('retry-after');
+	const retryAfterSeconds = parseRetryAfterHeader(retryAfter);
+	if (retryAfterSeconds !== null) return retryAfterSeconds;
+
+	const resetHeader = headers.get('x-ratelimit-reset');
+	const resetSeconds = parseFiniteSeconds(resetHeader);
+	if (resetSeconds !== null) return resetSeconds;
+
+	return Math.max(1, Math.ceil(fallbackSeconds));
+}
+
+function parseRetryAfterHeader(value: string | null): number | null {
+	if (!value) return null;
+
+	const seconds = parseFiniteSeconds(value);
+	if (seconds !== null) return seconds;
+
+	const dateValue = Date.parse(value);
+	if (!Number.isNaN(dateValue)) {
+		return Math.max(1, Math.ceil((dateValue - Date.now()) / 1000));
+	}
+
+	return null;
+}
+
+function parseFiniteSeconds(value: string | null): number | null {
+	if (!value) return null;
+	const parsed = Number.parseFloat(value);
+	if (!Number.isFinite(parsed)) return null;
+	return Math.max(1, Math.ceil(parsed));
+}
+
+function collectPreviewImages(images: any[] | undefined): string[] | undefined {
+	if (!Array.isArray(images)) return undefined;
+
+	const urls = images
+		.map((image) => image?.source?.url)
+		.filter((url): url is string => typeof url === 'string')
+		.map((url) => url.replaceAll('&amp;', '&'));
+
+	return urls.length > 0 ? urls : undefined;
 }

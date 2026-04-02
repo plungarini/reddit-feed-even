@@ -1,6 +1,18 @@
 import { Hono } from 'hono';
 
 const router = new Hono();
+const FORWARDED_HEADERS = ['content-type', 'retry-after', 'x-ratelimit-used', 'x-ratelimit-remaining', 'x-ratelimit-reset'];
+
+function buildProxyHeaders(response: Response): Headers {
+	const headers = new Headers();
+
+	for (const headerName of FORWARDED_HEADERS) {
+		const value = response.headers.get(headerName);
+		if (value) headers.set(headerName, value);
+	}
+
+	return headers;
+}
 
 // ─── Auth test endpoint ─────────────────
 router.get('/test-auth', async (c) => {
@@ -97,19 +109,27 @@ router.all('/:proxyPath{.+}', async (c) => {
 			redirect: 'follow',
 		});
 
+		const proxyHeaders = buildProxyHeaders(response);
+
 		if (!response.ok) {
 			const error = await response.text();
-			console.error(`[Proxy] Reddit API error: ${response.status}`, error);
-			return c.json(
-				{
-					error: `Reddit API error: ${response.status}`,
-				},
-				response.status as any,
+			console.error(
+				`[Proxy] Reddit API error: ${response.status} retry-after=${response.headers.get('retry-after')} reset=${response.headers.get('x-ratelimit-reset')}`,
+				error,
 			);
+			return new Response(error || JSON.stringify({ error: `Reddit API error: ${response.status}` }), {
+				status: response.status,
+				statusText: response.statusText,
+				headers: proxyHeaders,
+			});
 		}
 
 		const text = await response.text();
-		return c.text(text, 200, { 'Content-Type': 'application/json' });
+		return new Response(text, {
+			status: response.status,
+			statusText: response.statusText,
+			headers: proxyHeaders,
+		});
 	} catch (err) {
 		const message = err instanceof Error ? err.message : String(err);
 		return c.json({ error: message }, 500);

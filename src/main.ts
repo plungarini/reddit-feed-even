@@ -19,6 +19,7 @@ import { FeedView } from './glasses/screens/feed/feed-view';
 import { MenuView } from './glasses/screens/menu/menu-view';
 import { PostStore } from './glasses/store/post-store';
 import { getStringChunks } from './shared/utils';
+import { createActivePostPreview, type WebviewAppState } from './shared/webview-state';
 
 const LOAD_ANIM_MS = 300;
 
@@ -51,7 +52,7 @@ type Bridge = Awaited<ReturnType<typeof waitForEvenAppBridge>>;
 
 // ─── Debug panel ────────────────────────────────────────────────────────────
 
-function debugState(update: Record<string, unknown>) {
+function debugState(update: Partial<WebviewAppState>) {
 	globalThis.dispatchEvent(new CustomEvent('app:state', { detail: update }));
 }
 
@@ -166,7 +167,7 @@ async function main() {
 	const config = await loadConfig();
 
 	const hasAuth = !!(config.auth.tokenV2 && config.auth.session);
-	debugState({ hasAuth });
+	debugState({ hasAuth, activePost: null });
 
 	// Cache duration: read from config, min 60s
 	const cacheDurationMs = Math.max(60_000, config.cache.durationMs);
@@ -179,9 +180,6 @@ async function main() {
 	const redditClient = new RedditClient(authManager, rateLimiter, config.api);
 	const postStore = new PostStore(redditClient, cacheDurationMs);
 	const uiManager = new UIManager();
-
-	// Wire rate limit callback
-	redditClient.setRateLimitCallback((seconds) => postStore.startRetryCountdown(seconds));
 
 	// Views
 	const views: Views = {
@@ -267,7 +265,7 @@ async function main() {
 	await postStore.loadFeed(config.feed);
 	const finalState = postStore.getState();
 	if (finalState.error) {
-		debugState({ status: 'error', posts: 0, error: finalState.error });
+		debugState({ status: 'error', posts: 0, error: finalState.error, activePost: null });
 	} else {
 		debugState({ status: 'ready', posts: finalState.posts.length, error: null });
 	}
@@ -455,6 +453,13 @@ async function render(bridge: Bridge, postStore: PostStore, uiManager: UIManager
 		highlight: state.highlightedIndex,
 		posts: state.posts.length,
 		error: state.error ?? null,
+		activePost:
+			view === 'detail' || view === 'comments'
+				? (() => {
+						const post = postStore.getHighlightedPost();
+						return post ? createActivePostPreview(post) : null;
+					})()
+				: null,
 	});
 
 	try {

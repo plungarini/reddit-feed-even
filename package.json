@@ -5,7 +5,7 @@
 		"class-variance-authority": "^0.7.1",
 		"clsx": "^2.1.1",
 		"common-tags": "^1.8.2",
-		"even-toolkit": "^1.4.2",
+		"even-toolkit": "^1.5.0",
 		"hono": "^4.12.9",
 		"react": "^19.2.4",
 		"react-dom": "^19.2.4",
@@ -50,7 +50,7 @@
 		"dev": "concurrently -n QR,VITE,SERVER -c cyan,green,yellow \"npm run qr\" \"vite --host 0.0.0.0 --port 5173\" \"npm run server\"",
 		"emulator": "npx evenhub-simulator http://localhost:5173/",
 		"pack": "npm run build && evenhub pack app.json dist -o reddit-feed.ehpk",
-		"qr": "node scripts/qr.mjs",
+		"qr": "node ../../scripts/qr.mjs",
 		"server": "wrangler dev --port 3001 --ip 0.0.0.0",
 		"typecheck": "tsc --noEmit"
 	},

@@ -22,6 +22,7 @@ export interface RedditPost {
 	contentType: 'link' | 'self' | 'image' | 'video' | 'gallery';
 	thumbnail?: string;
 	preview?: string;
+	galleryImages?: string[];
 	flair?: string;
 	isNsfw: boolean;
 }

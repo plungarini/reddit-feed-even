@@ -29,6 +29,7 @@ export interface CachedPreview {
 	url: string;
 	title?: string;
 	description?: string;
+	image?: string;
 	cachedAt: number;
 }
 
