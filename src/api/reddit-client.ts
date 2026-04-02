@@ -231,8 +231,8 @@ export class RedditClient implements RedditClientInterface {
 			contentType = 'gallery';
 		}
 
-		// Reddit encodes preview URLs with &amp; — decode for direct use
-		const preview = raw.preview?.images?.[0]?.source?.url?.replaceAll('&amp;', '&');
+		const preview = this.decodeRedditMediaUrl(raw.preview?.images?.[0]?.source?.url);
+		const galleryImages = this.extractGalleryImages(raw);
 
 		return {
 			id: raw.id,
@@ -250,8 +250,40 @@ export class RedditClient implements RedditClientInterface {
 			contentType,
 			thumbnail: raw.thumbnail,
 			preview,
+			galleryImages,
 			flair: raw.link_flair_text,
 			isNsfw: raw.over_18,
 		};
 	}
+
+	private extractGalleryImages(raw: any): string[] | undefined {
+		const mediaMetadata = raw.media_metadata ?? {};
+		const items = Array.isArray(raw.gallery_data?.items) ? raw.gallery_data.items : [];
+		const images = items
+			.map((item: { media_id?: string }) => {
+				const media = item?.media_id ? mediaMetadata[item.media_id] : null;
+				const source = media?.s?.u ?? media?.p?.[media?.p?.length - 1]?.u;
+				return this.decodeRedditMediaUrl(source);
+			})
+			.filter((url: string | undefined): url is string => Boolean(url));
+
+		if (images.length > 0) return images;
+		return collectPreviewImages(raw.preview?.images);
+	}
+
+	private decodeRedditMediaUrl(url?: string): string | undefined {
+		if (!url || typeof url !== 'string') return undefined;
+		return url.replaceAll('&amp;', '&');
+	}
+}
+
+function collectPreviewImages(images: any[] | undefined): string[] | undefined {
+	if (!Array.isArray(images)) return undefined;
+
+	const urls = images
+		.map((image) => image?.source?.url)
+		.filter((url): url is string => typeof url === 'string')
+		.map((url) => url.replaceAll('&amp;', '&'));
+
+	return urls.length > 0 ? urls : undefined;
 }

@@ -22,7 +22,7 @@ import {
 	TextContainerProperty,
 	TextContainerUpgrade,
 } from '@evenrealities/even_hub_sdk';
-import { getCachedPreview, setCachedPreview } from '../../../api/preview-cache';
+import { loadLinkPreview, resolvePreviewApiBase } from '../../../api/link-preview';
 import { CachedPost } from '../../../core/types';
 import { BORDER_RADIUS, MAX_CREATE_LENGTH, MAX_UPGRADE_LENGTH } from '../../../shared/constants';
 import { capitalizeText, fmtScore, fmtTimeAgo, getStringChunks, normalizeWebText } from '../../../shared/utils';
@@ -32,7 +32,7 @@ const LINK_MAX_DESC_LEN = 200;
 
 export class DetailView {
 	private readonly bridge: EvenAppBridge;
-	private readonly proxyUrl: string;
+	private readonly previewApiBase: string | null;
 	private lastPostId: string | null = null;
 	private initializedPostId: string | null = null;
 	private linkPreviewCache: Map<string, string[]> = new Map();
@@ -40,10 +40,7 @@ export class DetailView {
 
 	constructor(bridge: EvenAppBridge, proxyUrl: string) {
 		this.bridge = bridge;
-		this.proxyUrl = proxyUrl.endsWith('/') ? proxyUrl.slice(0, -1) : proxyUrl;
-		if (this.proxyUrl && !this.proxyUrl.endsWith('/api')) {
-			this.proxyUrl = `${this.proxyUrl}/api`;
-		}
+		this.previewApiBase = resolvePreviewApiBase(proxyUrl);
 	}
 
 	reset(): void {
@@ -210,7 +207,7 @@ export class DetailView {
 				} else {
 					this.fetchingPostId = post.id;
 					try {
-						const linkLines = await buildLinkPreview(post.url, this.proxyUrl);
+						const linkLines = await buildLinkPreview(post.url, this.previewApiBase);
 						this.linkPreviewCache.set(post.id, linkLines);
 						attachmentLines.push(...linkLines);
 					} catch (e) {
@@ -234,9 +231,9 @@ export class DetailView {
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
-async function buildLinkPreview(url: string, proxyUrl: string): Promise<string[]> {
+async function buildLinkPreview(url: string, apiBaseUrl: string | null): Promise<string[]> {
 	const lines: string[] = [];
-	const { domain, title, description } = await extractLink(url, proxyUrl);
+	const { domain, title, description } = await loadLinkPreview(url, apiBaseUrl);
 	let contentLabel = `╭─────────────────────────╮\n│    Link to ${domain}\n╰─────────────────────────╯`;
 
 	if (title) {
@@ -258,73 +255,4 @@ async function buildLinkPreview(url: string, proxyUrl: string): Promise<string[]
 
 	lines.push(contentLabel);
 	return lines;
-}
-
-async function extractLink(
-	url: string,
-	proxyUrl: string,
-): Promise<{ domain: string; title?: string; description?: string }> {
-	if (!url) return { domain: 'unknown' };
-
-	const domain = extractDomain(url);
-
-	try {
-		// Check client-side cache first
-		const cached = await getCachedPreview(url);
-		if (cached) {
-			console.log(`[DetailView] Client cache hit for: ${url}`);
-			return {
-				domain,
-				title: cached.title ? normalizeWebText(cached.title) : undefined,
-				description: cached.description ? normalizeWebText(cached.description) : undefined,
-			};
-		}
-
-		// Fetch from server
-		const previewUrl = `${proxyUrl}/preview?url=${encodeURIComponent(url)}`;
-		console.log(`[DetailView] Fetching preview: ${previewUrl}`);
-
-		const response = await fetch(previewUrl, {
-			signal: AbortSignal.timeout(60000),
-		});
-
-		if (response.ok) {
-			const data = await response.json<{
-				title?: string;
-				description?: string;
-				url: string;
-			}>();
-			console.log('[DetailView] Preview data:', { data });
-
-			// Store in client cache
-			if (data.title || data.description) {
-				await setCachedPreview(url, {
-					title: data.title,
-					description: data.description,
-				});
-			}
-
-			return {
-				domain,
-				title: data.title ? normalizeWebText(data.title) : undefined,
-				description: data.description ? normalizeWebText(data.description) : undefined,
-			};
-		}
-	} catch (e) {
-		console.warn('[DetailView] Preview fetch failed:', e);
-	}
-
-	// Fallback to just domain
-	return { domain };
-}
-
-/**
- * Extract domain from URL
- */
-function extractDomain(url: string): string {
-	try {
-		return new URL(url).hostname.replace(/^www\./, '');
-	} catch {
-		return url.substring(0, 30);
-	}
 }

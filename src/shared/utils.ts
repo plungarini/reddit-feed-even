@@ -71,6 +71,63 @@ export function normalizeWebText(text: string): string {
 	);
 }
 
+export interface TextSegment {
+	type: 'text' | 'link';
+	content: string;
+	href?: string;
+}
+
+const URL_REGEX = /(https?:\/\/[^\s<>()]+|www\.[^\s<>()]+)/gi;
+
+export function splitTextWithLinks(text: string): TextSegment[] {
+	if (!text) return [];
+
+	const segments: TextSegment[] = [];
+	const pushText = (content: string) => {
+		if (!content) return;
+		const last = segments[segments.length - 1];
+		if (last?.type === 'text') {
+			last.content += content;
+			return;
+		}
+		segments.push({
+			type: 'text',
+			content,
+		});
+	};
+	let lastIndex = 0;
+
+	for (const match of text.matchAll(URL_REGEX)) {
+		const raw = match[0];
+		const index = match.index ?? 0;
+
+		if (index > lastIndex) {
+			pushText(text.slice(lastIndex, index));
+		}
+
+		const trimmed = raw.replace(/[),.;!?]+$/g, '');
+		const trailing = raw.slice(trimmed.length);
+
+		segments.push({
+			type: 'link',
+			content: trimmed,
+			href: trimmed.startsWith('http://') || trimmed.startsWith('https://') ? trimmed : `https://${trimmed}`,
+		});
+
+		if (trailing) {
+			pushText(trailing);
+		}
+
+		lastIndex = index + raw.length;
+	}
+
+	if (lastIndex < text.length) {
+		pushText(text.slice(lastIndex));
+	}
+
+	return segments.length > 0 ? segments : [{ type: 'text', content: text }];
+}
+
 export function capitalizeText(text: string): string {
 	const parts = text.split(' ');
 	return parts.map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
