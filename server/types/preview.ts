@@ -3,4 +3,5 @@ export interface PreviewData {
 	url: string;
 	title?: string;
 	description?: string;
+	image?: string;
 }

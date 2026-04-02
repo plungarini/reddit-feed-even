@@ -38,6 +38,7 @@ async function fetchViaOembed(url: string): Promise<PreviewData | null> {
 			method: 'oembed',
 			url,
 			title: data.title,
+			image: data.thumbnail_url,
 		};
 	} catch (err) {
 		console.warn('[PREVIEW] Fetch via oembed failed', err);
@@ -60,6 +61,7 @@ async function fetchViaMicrolink(url: string): Promise<PreviewData | null> {
 			url,
 			title: data?.title,
 			description: data?.description,
+			image: data?.image?.url,
 		};
 
 		if (!response.title || !response.description) throw new Error('Error: No title or description');
@@ -100,6 +102,7 @@ async function fetchViaPeekalink(url: string): Promise<PreviewData | null> {
 			url,
 			title: data?.title,
 			description: data?.description,
+			image: data?.image?.thumbnail?.url,
 		};
 
 		if (!response.title || !response.description) throw new Error('Error: No title or description');
@@ -112,14 +115,14 @@ async function fetchViaPeekalink(url: string): Promise<PreviewData | null> {
 
 async function fetchViaLinkpreviewnet(url: string): Promise<PreviewData | null> {
 	try {
-		const res = await fetch(`https://api.linkpreview.net/?q=${encodeURIComponent(url)}&fields=title,description`, {
+		const res = await fetch(`https://api.linkpreview.net/?q=${encodeURIComponent(url)}&fields=title,description,image`, {
 			headers: {
 				'X-Linkpreview-Api-Key': LINKPREVIEW_API_KEY,
 			},
 			signal: AbortSignal.timeout(10_000),
 		});
 		if (!res.ok) throw new Error(`Error: ${res.status} | ${res.statusText}`);
-		const data = await res.json<{ title?: string; description?: string }>();
+		const data = await res.json<{ title?: string; description?: string; image?: string }>();
 
 		console.log('[PREVIEW] Fetch via linkpreviewnet', { title: data?.title, description: data?.description });
 
@@ -128,6 +131,7 @@ async function fetchViaLinkpreviewnet(url: string): Promise<PreviewData | null> 
 			url,
 			title: data?.title,
 			description: data?.description,
+			image: data?.image,
 		};
 
 		if (!response.title || !response.description) throw new Error('Error: No title or description');
@@ -154,7 +158,8 @@ async function fetchViaScrape(url: string): Promise<PreviewData | null> {
 
 		let ogTitle = '',
 			htmlTitle = '',
-			desc = '';
+			desc = '',
+			image = '';
 
 		const rewriter = new HTMLRewriter()
 			.on('meta', {
@@ -185,6 +190,7 @@ async function fetchViaScrape(url: string): Promise<PreviewData | null> {
 						].includes(name)
 					)
 						desc = desc || content;
+					if (['og:image', 'twitter:image', 'twitter:image:src'].includes(name)) image = image || content;
 				},
 			})
 			.on('title', {
@@ -215,6 +221,7 @@ async function fetchViaScrape(url: string): Promise<PreviewData | null> {
 			url,
 			title,
 			description: desc.replaceAll(/\s+/g, ' ').trim(),
+			image: image.trim() || undefined,
 		};
 
 		if (!response.title || !response.description) return null;

@@ -1,6 +1,8 @@
 import { AppShell, NavHeader, allIcons } from 'even-toolkit/web';
+import { IcMenuHealt } from 'even-toolkit/web/icons/svg-icons';
 import React from 'react';
 import { Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { HomeView } from './views/HomeView';
 import { LogsView } from './views/LogsView';
 import { SettingsView } from './views/SettingsView';
 import { StatusView } from './views/StatusView';
@@ -13,9 +15,11 @@ const IcHomeActive = allIcons['menu-home-highlighted'] as SvgIcon;
 const IcGear = allIcons['menu-gear'] as SvgIcon;
 const IcGearActive = allIcons['menu-gear-highlighted'] as SvgIcon;
 const IcChecklist = allIcons['edit-checklist'] as SvgIcon;
+const IcStatus = allIcons['status-info'] as SvgIcon;
 
 const PAGE_TITLES: Record<string, string> = {
-	'/': 'App Status',
+	'/': 'Home',
+	'/status': 'App Status',
 	'/logs': 'Debug Logs',
 	'/settings': 'Settings',
 };
@@ -28,7 +32,8 @@ interface TabDef {
 }
 
 const TABS: TabDef[] = [
-	{ id: '/', label: 'Status', Icon: IcHome, IconActive: IcHomeActive },
+	{ id: '/', label: 'Home', Icon: IcHome, IconActive: IcHomeActive },
+	{ id: '/status', label: 'Status', Icon: IcMenuHealt, IconActive: IcMenuHealt },
 	{ id: '/logs', label: 'Logs', Icon: IcChecklist, IconActive: IcChecklist },
 	{ id: '/settings', label: 'Settings', Icon: IcGear, IconActive: IcGearActive },
 ];
@@ -77,7 +82,8 @@ export default function App() {
 	return (
 		<Routes>
 			<Route element={<Layout />}>
-				<Route index element={<StatusView />} />
+				<Route index element={<HomeView />} />
+				<Route path="status" element={<StatusView />} />
 				<Route path="settings" element={<SettingsView />} />
 				<Route path="logs" element={<LogsView />} />
 			</Route>
