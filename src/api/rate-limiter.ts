@@ -32,18 +32,18 @@ export class RateLimiter {
    * Update rate limit state from API response headers
    */
   updateFromHeaders(headers: Headers): void {
-    const used = headers.get('x-ratelimit-used');
-    const remaining = headers.get('x-ratelimit-remaining');
-    const reset = headers.get('x-ratelimit-reset');
+    const used = parseHeaderNumber(headers.get('x-ratelimit-used'));
+    const remaining = parseHeaderNumber(headers.get('x-ratelimit-remaining'));
+    const reset = parseHeaderNumber(headers.get('x-ratelimit-reset'));
 
     if (used !== null) {
-      this.state.used = parseInt(used, 10);
+      this.state.used = used;
     }
     if (remaining !== null) {
-      this.state.remaining = parseInt(remaining, 10);
+      this.state.remaining = remaining;
     }
     if (reset !== null) {
-      this.state.resetSeconds = parseInt(reset, 10);
+      this.state.resetSeconds = reset;
     }
 
     this.state.lastUpdated = Date.now();
@@ -91,4 +91,10 @@ export class RateLimiter {
   getTimeUntilReset(): number {
     return this.state.resetSeconds * 1000;
   }
+}
+
+function parseHeaderNumber(value: string | null): number | null {
+  if (value === null) return null;
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }

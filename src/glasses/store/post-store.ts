@@ -12,7 +12,7 @@
  * cache is bypassed and fresh posts are fetched.
  */
 
-import { RedditClient } from '../../api/reddit-client';
+import { RedditClient, RedditRateLimitError } from '../../api/reddit-client';
 import { CachedPost, FeedConfig, RedditComment } from '../../core/types';
 import { clamp } from '../../shared/utils';
 
@@ -58,6 +58,7 @@ export class PostStore {
 	private readonly client: RedditClient;
 	private currentFeed: FeedConfig | null = null;
 	private afterCursor: string | null = null;
+	private retryTimer: ReturnType<typeof setInterval> | null = null;
 
 	// Simple in-memory cache — no persistence, no IndexedDB
 	private cachedPosts: CachedPost[] | null = null;
@@ -131,6 +132,8 @@ export class PostStore {
 		this.currentFeed = config;
 		this.notify();
 
+		let keepRetryCountdown = false;
+
 		try {
 			// Return cached posts if still fresh and not forced
 			if (!forceRefresh && this.cachedPosts !== null && Date.now() - this.cacheTimestamp < this.cacheDurationMs) {
@@ -153,6 +156,12 @@ export class PostStore {
 			this.cacheTimestamp = Date.now();
 			console.log(`[PostStore] Fetched ${posts.length} posts, cached for ${Math.round(this.cacheDurationMs / 1000)}s`);
 		} catch (err) {
+			if (err instanceof RedditRateLimitError) {
+				keepRetryCountdown = true;
+				this.state.error = null;
+				this.startRetryCountdown(err.retryAfterSeconds, () => this.loadFeed(config, forceRefresh));
+				return;
+			}
 			const errorMsg = err instanceof Error ? err.message : 'Failed to load feed';
 			this.state.error = errorMsg;
 			console.error('[PostStore] loadFeed error:', err);
@@ -162,28 +171,39 @@ export class PostStore {
 			}
 		} finally {
 			this.state.loading = false;
-			this.clearRetryCountdown();
+			if (!keepRetryCountdown) this.clearRetryCountdown();
 			this.notify();
 		}
 	}
 
-	startRetryCountdown(seconds: number): void {
-		this.state.retryInSeconds = Math.ceil(seconds);
+	startRetryCountdown(seconds: number, onElapsed?: () => Promise<void> | void): void {
+		this.clearRetryTimer();
+		this.state.retryInSeconds = Math.max(1, Math.ceil(seconds));
+		this.state.error = null;
 		this.notify();
 
-		const timer = setInterval(() => {
-			if (this.state.retryInSeconds !== null && this.state.retryInSeconds > 0) {
-				this.state.retryInSeconds--;
-				this.notify();
-			} else {
-				clearInterval(timer);
+		this.retryTimer = setInterval(() => {
+			if (this.state.retryInSeconds === null) {
+				this.clearRetryTimer();
+				return;
+			}
+
+			this.state.retryInSeconds--;
+
+			if (this.state.retryInSeconds <= 0) {
+				this.clearRetryTimer();
 				this.state.retryInSeconds = null;
 				this.notify();
+				void onElapsed?.();
+				return;
 			}
+
+			this.notify();
 		}, 1000);
 	}
 
 	clearRetryCountdown(): void {
+		this.clearRetryTimer();
 		this.state.retryInSeconds = null;
 		this.notify();
 	}
@@ -282,6 +302,8 @@ export class PostStore {
 		this.state.loadingMore = true;
 		this.notify();
 
+		let keepRetryCountdown = false;
+
 		try {
 			const { posts: fresh, after } = await this.client.fetchFeed(this.currentFeed, this.afterCursor);
 			this.afterCursor = after;
@@ -295,9 +317,15 @@ export class PostStore {
 			this.state.posts = [...this.state.posts, ...newPosts];
 			console.log(`[PostStore] loadMore: added ${newPosts.length} posts, total=${this.state.posts.length}`);
 		} catch (err) {
+			if (err instanceof RedditRateLimitError) {
+				keepRetryCountdown = true;
+				this.startRetryCountdown(err.retryAfterSeconds, () => this.loadMore());
+				return;
+			}
 			console.error('[PostStore] loadMore error:', err);
 		} finally {
 			this.state.loadingMore = false;
+			if (!keepRetryCountdown && this.state.retryInSeconds !== null) this.clearRetryCountdown();
 			this.notify();
 		}
 	}
@@ -317,6 +345,8 @@ export class PostStore {
 		this.state.expandedComments.clear();
 		this.notify();
 
+		let keepRetryCountdown = false;
+
 		try {
 			const comments = await this.client.fetchComments(post.id);
 			if (signal?.aborted) {
@@ -326,6 +356,13 @@ export class PostStore {
 			this.state.comments = comments;
 			this.state.hasMoreComments = comments.length === 10;
 		} catch (err) {
+			if (err instanceof RedditRateLimitError) {
+				keepRetryCountdown = true;
+				this.startRetryCountdown(err.retryAfterSeconds, () => {
+					if (!signal?.aborted) return this.loadComments(signal);
+				});
+				return;
+			}
 			if (signal?.aborted) {
 				console.log('[PostStore] loadComments aborted (during error)');
 				return;
@@ -334,6 +371,7 @@ export class PostStore {
 			this.state.comments = [];
 		} finally {
 			this.state.commentsLoading = false;
+			if (!keepRetryCountdown && this.state.retryInSeconds !== null) this.clearRetryCountdown();
 			this.notify();
 		}
 	}
@@ -345,6 +383,8 @@ export class PostStore {
 		this.state.commentsLoading = true;
 		this.notify();
 
+		let keepRetryCountdown = false;
+
 		try {
 			const moreComments = await this.client.fetchComments(post.id);
 			if (signal?.aborted) {
@@ -355,6 +395,13 @@ export class PostStore {
 			this.state.commentsPage++;
 			this.state.hasMoreComments = moreComments.length === 10;
 		} catch (err) {
+			if (err instanceof RedditRateLimitError) {
+				keepRetryCountdown = true;
+				this.startRetryCountdown(err.retryAfterSeconds, () => {
+					if (!signal?.aborted) return this.loadMoreComments(signal);
+				});
+				return;
+			}
 			if (signal?.aborted) {
 				console.log('[PostStore] loadMoreComments aborted (during error)');
 				return;
@@ -362,7 +409,15 @@ export class PostStore {
 			console.error('[PostStore] loadMoreComments error:', err);
 		} finally {
 			this.state.commentsLoading = false;
+			if (!keepRetryCountdown && this.state.retryInSeconds !== null) this.clearRetryCountdown();
 			this.notify();
+		}
+	}
+
+	private clearRetryTimer(): void {
+		if (this.retryTimer) {
+			clearInterval(this.retryTimer);
+			this.retryTimer = null;
 		}
 	}
 }

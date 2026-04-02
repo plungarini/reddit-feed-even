@@ -181,9 +181,6 @@ async function main() {
 	const postStore = new PostStore(redditClient, cacheDurationMs);
 	const uiManager = new UIManager();
 
-	// Wire rate limit callback
-	redditClient.setRateLimitCallback((seconds) => postStore.startRetryCountdown(seconds));
-
 	// Views
 	const views: Views = {
 		feed: new FeedView(bridge),
