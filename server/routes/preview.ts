@@ -61,6 +61,7 @@ router.get('/', async (c) => {
 			method: preview?.method || 'failed',
 			title: preview?.title?.slice(0, 200),
 			description: preview?.description?.slice(0, 500),
+			image: preview?.image,
 			url,
 		};
 
