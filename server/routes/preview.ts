@@ -42,13 +42,11 @@ router.get('/', async (c) => {
 		const isValid = dateHeader ? (Date.now() - new Date(dateHeader).getTime()) / 1000 < ttlSeconds : true;
 
 		if (isValid) {
-			console.log(`[Preview] Cache hit: ${url}`);
 			return cached;
 		}
 	}
 
 	try {
-		console.log(`[Preview] Fetching: ${url}`);
 
 		const preview =
 			(await previewModes.fetchViaLinkpreviewnet(url)) ??
@@ -65,7 +63,6 @@ router.get('/', async (c) => {
 			url,
 		};
 
-		console.log(`[Preview] Done with "${preview?.method}": ${data.title}`);
 
 		const response = c.json(data);
 
