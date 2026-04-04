@@ -8,12 +8,6 @@ const app = new Hono();
 
 app.use('*', cors());
 
-// ─── Request logging ─────────────────────────────────────────────────────────
-app.use('*', async (c, next) => {
-	console.log(`[${new Date().toISOString()}] ${c.req.method} ${c.req.path}`);
-	await next();
-});
-
 // ─── Routes ──────────────────────────────────────────────────────────────────
 app.route('/api/health', healthRouter);
 app.route('/api/reddit', redditRouter);

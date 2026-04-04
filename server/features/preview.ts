@@ -32,8 +32,6 @@ async function fetchViaOembed(url: string): Promise<PreviewData | null> {
 		if (!res.ok) throw new Error(`Error: ${res.status} | ${res.statusText}`);
 		const data = await res.json<{ title?: string; thumbnail_url?: string; author_name?: string }>();
 
-		console.log('[PREVIEW] Fetch via oembed', { title: data?.title });
-
 		return {
 			method: 'oembed',
 			url,
@@ -53,8 +51,6 @@ async function fetchViaMicrolink(url: string): Promise<PreviewData | null> {
 		});
 		if (!res.ok) throw new Error(`Error: ${res.status} | ${res.statusText}`);
 		const { data } = await res.json<{ data: { title?: string; description?: string; image?: { url?: string } } }>();
-
-		console.log('[PREVIEW] Fetch via microlink', { title: data?.title, description: data?.description });
 
 		const response: PreviewData = {
 			method: 'microlink',
@@ -95,8 +91,6 @@ async function fetchViaPeekalink(url: string): Promise<PreviewData | null> {
 			throw new Error(`Error: ${res.status} | ${res.statusText}`);
 		}
 
-		console.log('[PREVIEW] Fetch via peekalink', { title: data?.title, description: data?.description });
-
 		const response: PreviewData = {
 			method: 'peekalink',
 			url,
@@ -123,8 +117,6 @@ async function fetchViaLinkpreviewnet(url: string): Promise<PreviewData | null> 
 		});
 		if (!res.ok) throw new Error(`Error: ${res.status} | ${res.statusText}`);
 		const data = await res.json<{ title?: string; description?: string; image?: string }>();
-
-		console.log('[PREVIEW] Fetch via linkpreviewnet', { title: data?.title, description: data?.description });
 
 		const response: PreviewData = {
 			method: 'linkpreviewnet',
