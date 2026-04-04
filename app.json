@@ -13,7 +13,9 @@
 			"name": "network"
 		}
 	],
-	"supported_languages": ["en"],
+	"supported_languages": [
+		"en"
+	],
 	"tagline": "Reddit. Now literally in front of you.",
-	"version": "0.4.0"
+	"version": "0.4.1"
 }
