@@ -22,7 +22,7 @@ import {
 	TextContainerProperty,
 	TextContainerUpgrade,
 } from '@evenrealities/even_hub_sdk';
-import { loadLinkPreview, resolvePreviewApiBase } from '../../../api/link-preview';
+import { loadLinkPreview, resolvePreviewApiBase, type LinkPreviewData } from '../../../api/link-preview';
 import { CachedPost } from '../../../core/types';
 import { BORDER_RADIUS, MAX_CREATE_LENGTH, MAX_UPGRADE_LENGTH } from '../../../shared/constants';
 import { capitalizeText, fmtScore, fmtTimeAgo, getStringChunks, normalizeWebText } from '../../../shared/utils';
@@ -30,21 +30,29 @@ import { capitalizeText, fmtScore, fmtTimeAgo, getStringChunks, normalizeWebText
 const LINK_MAX_LINE_LEN = 52;
 const LINK_MAX_DESC_LEN = 200;
 
+interface DetailViewDeps {
+	loadLinkPreviewImpl?: typeof loadLinkPreview;
+}
+
 export class DetailView {
 	private readonly bridge: EvenAppBridge;
 	private readonly previewApiBase: string | null;
+	private readonly loadLinkPreviewImpl: typeof loadLinkPreview;
 	private lastPostId: string | null = null;
 	private initializedPostId: string | null = null;
 	private linkPreviewCache: Map<string, string[]> = new Map();
 	private fetchingPostId: string | null = null;
 
-	constructor(bridge: EvenAppBridge, proxyUrl: string) {
+	constructor(bridge: EvenAppBridge, proxyUrl: string, deps: DetailViewDeps = {}) {
 		this.bridge = bridge;
 		this.previewApiBase = resolvePreviewApiBase(proxyUrl);
+		this.loadLinkPreviewImpl = deps.loadLinkPreviewImpl ?? loadLinkPreview;
 	}
 
 	reset(): void {
+		this.lastPostId = null;
 		this.initializedPostId = null;
+		this.fetchingPostId = null;
 	}
 
 	/**
@@ -84,7 +92,7 @@ export class DetailView {
 		if (this.initializedPostId === post.id) {
 			console.log('[DetailView] Post already initialized, skipping rebuild');
 			if (post.contentType === 'link' && !this.linkPreviewCache.has(post.id)) {
-				await this.updateContent(post, 'update', signal);
+				this.startPreviewLoad(post, signal);
 			}
 			return;
 		}
@@ -115,6 +123,7 @@ export class DetailView {
 			);
 			console.log('[DetailView] rebuildPageContainer:', ok);
 			if (!ok) throw new Error('rebuildPageContainer returned false (detail)');
+			if (signal?.aborted) return;
 
 			this.initializedPostId = post.id;
 
@@ -123,7 +132,7 @@ export class DetailView {
 			}
 
 			if (post.contentType === 'link' && !signal?.aborted) {
-				await this.updateContent(post, 'update', signal);
+				this.startPreviewLoad(post, signal);
 			}
 		} catch (error) {
 			console.error('[DetailView] rebuildPageContainer failed', error);
@@ -132,6 +141,7 @@ export class DetailView {
 
 	async updateContent(post: CachedPost, mode: 'contentLen' | 'update', signal?: AbortSignal) {
 		if (signal?.aborted) return;
+		if (!this.isPostActive(post.id)) return;
 
 		const { content } = await this.buildContent(post, mode);
 		if (signal?.aborted) {
@@ -200,23 +210,6 @@ export class DetailView {
 			const cached = this.linkPreviewCache.get(post.id);
 			if (cached) {
 				attachmentLines.push(...cached);
-			} else if (mode === 'update') {
-				if (this.fetchingPostId === post.id) {
-					// Wait for existing fetch or just show loading
-					attachmentLines.push(`╭─────────────────────────╮\n│    Loading Link Preview…\n╰─────────────────────────╯`);
-				} else {
-					this.fetchingPostId = post.id;
-					try {
-						const linkLines = await buildLinkPreview(post.url, this.previewApiBase);
-						this.linkPreviewCache.set(post.id, linkLines);
-						attachmentLines.push(...linkLines);
-					} catch (e) {
-						console.error('[DetailView] Failed to build link preview:', e);
-						attachmentLines.push(`╭─────────────────────────╮\n│    Link Preview Failed\n╰─────────────────────────╯`);
-					} finally {
-						this.fetchingPostId = null;
-					}
-				}
 			} else {
 				attachmentLines.push(`╭─────────────────────────╮\n│    Loading Link Preview…\n╰─────────────────────────╯`);
 			}
@@ -227,13 +220,44 @@ export class DetailView {
 
 		return attachmentLines;
 	}
+
+	private startPreviewLoad(post: CachedPost, signal?: AbortSignal): void {
+		if (signal?.aborted) return;
+		if (this.linkPreviewCache.has(post.id)) return;
+		if (this.fetchingPostId === post.id) return;
+
+		this.fetchingPostId = post.id;
+		void this.loadAndApplyPreview(post, signal);
+	}
+
+	private async loadAndApplyPreview(post: CachedPost, signal?: AbortSignal): Promise<void> {
+		try {
+			const preview = await this.loadLinkPreviewImpl(post.url, this.previewApiBase, { signal });
+			if (signal?.aborted || !this.isPostActive(post.id)) return;
+
+			this.linkPreviewCache.set(post.id, buildLinkPreviewLines(preview));
+			await this.updateContent(post, 'update', signal);
+		} catch (error) {
+			if (signal?.aborted || !this.isPostActive(post.id)) return;
+			console.error('[DetailView] Failed to build link preview:', error);
+			this.linkPreviewCache.set(post.id, [`╭─────────────────────────╮\n│    Link Preview Failed\n╰─────────────────────────╯`]);
+			await this.updateContent(post, 'update', signal);
+		} finally {
+			if (this.fetchingPostId === post.id) {
+				this.fetchingPostId = null;
+			}
+		}
+	}
+
+	private isPostActive(postId: string): boolean {
+		return this.lastPostId === postId && this.initializedPostId === postId;
+	}
 }
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
-async function buildLinkPreview(url: string, apiBaseUrl: string | null): Promise<string[]> {
+function buildLinkPreviewLines({ domain, title, description }: LinkPreviewData): string[] {
 	const lines: string[] = [];
-	const { domain, title, description } = await loadLinkPreview(url, apiBaseUrl);
 	let contentLabel = `╭─────────────────────────╮\n│    Link to ${domain}\n╰─────────────────────────╯`;
 
 	if (title) {

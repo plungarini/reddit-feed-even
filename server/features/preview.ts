@@ -1,6 +1,12 @@
 import { env } from 'cloudflare:workers';
 import { PreviewData } from '../types/preview';
 import { OEMBED_PROVIDERS } from '../utils/oembed';
+import {
+	fetchPreviewWithFallback,
+	isAbortError,
+	mergeAbortSignals,
+	type PreviewFetcher,
+} from './preview-core';
 
 const ENV = env as Record<string, string>;
 const LINKPREVIEW_API_KEY = ENV.LINKPREVIEW_API_KEY;
@@ -23,12 +29,12 @@ function getOembedUrl(url: string): string | null {
 	}
 }
 
-async function fetchViaOembed(url: string): Promise<PreviewData | null> {
+async function fetchViaOembed(url: string, signal?: AbortSignal): Promise<PreviewData | null> {
 	const oembedUrl = getOembedUrl(url);
 	if (!oembedUrl) return null;
 
 	try {
-		const res = await fetch(oembedUrl, { signal: AbortSignal.timeout(5_000) });
+		const res = await fetch(oembedUrl, { signal: mergeAbortSignals([signal, AbortSignal.timeout(5_000)]) });
 		if (!res.ok) throw new Error(`Error: ${res.status} | ${res.statusText}`);
 		const data = await res.json<{ title?: string; thumbnail_url?: string; author_name?: string }>();
 
@@ -39,15 +45,16 @@ async function fetchViaOembed(url: string): Promise<PreviewData | null> {
 			image: data.thumbnail_url,
 		};
 	} catch (err) {
+		if (isAbortError(err, signal)) throw err;
 		console.warn('[PREVIEW] Fetch via oembed failed', err);
 		return null;
 	}
 }
 
-async function fetchViaMicrolink(url: string): Promise<PreviewData | null> {
+async function fetchViaMicrolink(url: string, signal?: AbortSignal): Promise<PreviewData | null> {
 	try {
 		const res = await fetch(`https://api.microlink.io?url=${encodeURIComponent(url)}`, {
-			signal: AbortSignal.timeout(10_000),
+			signal: mergeAbortSignals([signal, AbortSignal.timeout(10_000)]),
 		});
 		if (!res.ok) throw new Error(`Error: ${res.status} | ${res.statusText}`);
 		const { data } = await res.json<{ data: { title?: string; description?: string; image?: { url?: string } } }>();
@@ -63,12 +70,13 @@ async function fetchViaMicrolink(url: string): Promise<PreviewData | null> {
 		if (!response.title || !response.description) throw new Error('Error: No title or description');
 		return response;
 	} catch (err) {
+		if (isAbortError(err, signal)) throw err;
 		console.warn('[PREVIEW] Fetch via microlink failed', err);
 		return null;
 	}
 }
 
-async function fetchViaPeekalink(url: string): Promise<PreviewData | null> {
+async function fetchViaPeekalink(url: string, signal?: AbortSignal): Promise<PreviewData | null> {
 	try {
 		const res = await fetch('https://api.peekalink.io/', {
 			method: 'POST',
@@ -77,7 +85,7 @@ async function fetchViaPeekalink(url: string): Promise<PreviewData | null> {
 				'Content-Type': 'application/json',
 			},
 			body: JSON.stringify({ link: url }),
-			signal: AbortSignal.timeout(15_000),
+			signal: mergeAbortSignals([signal, AbortSignal.timeout(15_000)]),
 		});
 		const data = await res.json<{
 			title?: string;
@@ -102,18 +110,19 @@ async function fetchViaPeekalink(url: string): Promise<PreviewData | null> {
 		if (!response.title || !response.description) throw new Error('Error: No title or description');
 		return response;
 	} catch (err) {
+		if (isAbortError(err, signal)) throw err;
 		console.warn('[PREVIEW] Fetch via peekalink failed', err);
 		return null;
 	}
 }
 
-async function fetchViaLinkpreviewnet(url: string): Promise<PreviewData | null> {
+async function fetchViaLinkpreviewnet(url: string, signal?: AbortSignal): Promise<PreviewData | null> {
 	try {
 		const res = await fetch(`https://api.linkpreview.net/?q=${encodeURIComponent(url)}&fields=title,description,image`, {
 			headers: {
 				'X-Linkpreview-Api-Key': LINKPREVIEW_API_KEY,
 			},
-			signal: AbortSignal.timeout(10_000),
+			signal: mergeAbortSignals([signal, AbortSignal.timeout(10_000)]),
 		});
 		if (!res.ok) throw new Error(`Error: ${res.status} | ${res.statusText}`);
 		const data = await res.json<{ title?: string; description?: string; image?: string }>();
@@ -129,12 +138,13 @@ async function fetchViaLinkpreviewnet(url: string): Promise<PreviewData | null> 
 		if (!response.title || !response.description) throw new Error('Error: No title or description');
 		return response;
 	} catch (err) {
+		if (isAbortError(err, signal)) throw err;
 		console.warn('[PREVIEW] Fetch via linkpreviewnet failed', err);
 		return null;
 	}
 }
 
-async function fetchViaScrape(url: string): Promise<PreviewData | null> {
+async function fetchViaScrape(url: string, signal?: AbortSignal): Promise<PreviewData | null> {
 	try {
 		const res = await fetch(url, {
 			headers: {
@@ -143,7 +153,7 @@ async function fetchViaScrape(url: string): Promise<PreviewData | null> {
 				Range: 'bytes=0-51200',
 			},
 			redirect: 'follow',
-			signal: AbortSignal.timeout(10_000),
+			signal: mergeAbortSignals([signal, AbortSignal.timeout(10_000)]),
 		});
 
 		if (!res.ok && res.status !== 206) return null;
@@ -218,12 +228,30 @@ async function fetchViaScrape(url: string): Promise<PreviewData | null> {
 
 		if (!response.title || !response.description) return null;
 		return response;
-	} catch {
+	} catch (err) {
+		if (isAbortError(err, signal)) throw err;
 		return null;
 	}
 }
 
+const PREVIEW_FETCHERS: PreviewFetcher[] = [
+	fetchViaLinkpreviewnet,
+	fetchViaMicrolink,
+	fetchViaPeekalink,
+	fetchViaScrape,
+	fetchViaOembed,
+];
+
+async function fetchPreview(
+	url: string,
+	signal?: AbortSignal,
+	providers: PreviewFetcher[] = PREVIEW_FETCHERS,
+): Promise<PreviewData | null> {
+	return fetchPreviewWithFallback(url, signal, providers);
+}
+
 export const preview = {
+	fetchPreview,
 	fetchViaOembed,
 	fetchViaMicrolink,
 	fetchViaPeekalink,
