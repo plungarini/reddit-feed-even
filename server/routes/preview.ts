@@ -1,6 +1,7 @@
 /// <reference types="@cloudflare/workers-types" />
 import { Hono } from 'hono';
 import { PeekalinkRedirectLoopError, preview as previewModes } from '../features/preview';
+import { isAbortError } from '../features/preview-core';
 import { PreviewData } from '../types/preview';
 import { CACHE_CONFIG, clampTtl, generateCacheKey, getCacheTtlFromRequest } from '../utils/cache';
 
@@ -47,13 +48,7 @@ router.get('/', async (c) => {
 	}
 
 	try {
-
-		const preview =
-			(await previewModes.fetchViaLinkpreviewnet(url)) ??
-			(await previewModes.fetchViaMicrolink(url)) ??
-			(await previewModes.fetchViaPeekalink(url)) ??
-			(await previewModes.fetchViaScrape(url)) ??
-			(await previewModes.fetchViaOembed(url));
+		const preview = await previewModes.fetchPreview(url, c.req.raw.signal);
 
 		const data: PreviewData = {
 			method: preview?.method || 'failed',
@@ -71,6 +66,9 @@ router.get('/', async (c) => {
 
 		return response;
 	} catch (err) {
+		if (isAbortError(err, c.req.raw.signal)) {
+			return new Response(null, { status: 499 });
+		}
 		if (err instanceof PeekalinkRedirectLoopError) {
 			const errorResponse = c.json({ url: url, error: 'Link redirects to itself' }, 400);
 			c.executionCtx.waitUntil(cacheResponse(cache, cacheKey, errorResponse.clone(), CACHE_CONFIG.DEFAULT_TTL_SECONDS));
