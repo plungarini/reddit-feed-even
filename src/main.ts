@@ -351,6 +351,12 @@ function handleMenuEvent(
 		const selectedIdx = listEvent?.currentSelectItemIndex ?? entry.menuSelectedIndex ?? 0;
 		const selected = FEED_ITEMS[selectedIdx];
 		if (selected) {
+			if (selected.id === activeEndpoint) {
+				console.log(`[Main] Menu selected current endpoint=${activeEndpoint}; closing menu`);
+				uiManager.goBack();
+				return;
+			}
+
 			activeEndpoint = selected.id;
 			console.log(`[Main] Menu selecting: index=${selectedIdx} endpoint=${activeEndpoint}`);
 			menuSelecting = true;
