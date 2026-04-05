@@ -45,8 +45,9 @@ let loadAnimInterval: ReturnType<typeof setInterval> | null = null;
 let animTickFn: (() => void) | null = null; // set in main() once views are ready
 let menuSelecting = false; // guard against spurious menu rebuilds after selection
 
-// ─── Abort controller (detail/comments loading) ──────────────────────────────
-let activeAbortController: AbortController | null = null;
+// ─── Abort controllers (detail preview/comments loading) ─────────────────────
+let detailAbortController: AbortController | null = null;
+let commentsAbortController: AbortController | null = null;
 
 type Bridge = Awaited<ReturnType<typeof waitForEvenAppBridge>>;
 
@@ -225,8 +226,10 @@ async function main() {
 		if (state.loading || state.loadingMore || state.commentsLoading) {
 			if (type === OsEventTypeList.DOUBLE_CLICK_EVENT && (view === 'detail' || view === 'comments')) {
 				console.log(`[Main] DOUBLE_CLICK abort on view=${view}`);
-				activeAbortController?.abort();
-				activeAbortController = null;
+				detailAbortController?.abort();
+				detailAbortController = null;
+				commentsAbortController?.abort();
+				commentsAbortController = null;
 				views.comment.reset();
 				uiManager.goBack();
 			}
@@ -254,6 +257,14 @@ async function main() {
 
 	uiManager.subscribe(() => {
 		const view = uiManager.getCurrentView();
+		if (view !== 'detail') {
+			detailAbortController?.abort();
+			detailAbortController = null;
+		}
+		if (view !== 'comments') {
+			commentsAbortController?.abort();
+			commentsAbortController = null;
+		}
 		if (view !== 'comments') views.comment.reset();
 		if (view !== 'feed') views.feed.reset();
 		if (view !== 'detail') views.detail.reset();
@@ -303,6 +314,8 @@ function handleFeedEvent(
 	} else if (type === OsEventTypeList.CLICK_EVENT || type === undefined) {
 		const post = postStore.getHighlightedPost();
 		if (post) {
+			detailAbortController?.abort();
+			detailAbortController = new AbortController();
 			const currentEntry = uiManager.getCurrentEntry();
 			uiManager.pushView({
 				view: 'detail',
@@ -338,6 +351,12 @@ function handleMenuEvent(
 		const selectedIdx = listEvent?.currentSelectItemIndex ?? entry.menuSelectedIndex ?? 0;
 		const selected = FEED_ITEMS[selectedIdx];
 		if (selected) {
+			if (selected.id === activeEndpoint) {
+				console.log(`[Main] Menu selected current endpoint=${activeEndpoint}; closing menu`);
+				uiManager.goBack();
+				return;
+			}
+
 			activeEndpoint = selected.id;
 			console.log(`[Main] Menu selecting: index=${selectedIdx} endpoint=${activeEndpoint}`);
 			menuSelecting = true;
@@ -362,18 +381,20 @@ function handleDetailEvent(
 		const post = postStore.getHighlightedPost();
 		if (post) {
 			// Abort any pending detail load before navigating deeper
-			activeAbortController?.abort();
-			activeAbortController = new AbortController();
+			detailAbortController?.abort();
+			detailAbortController = null;
+			commentsAbortController?.abort();
+			commentsAbortController = new AbortController();
 			commentView.reset();
 			commentView.setContext(post.subreddit, post.title);
 			startLoadAnim();
 			uiManager.pushView({ view: 'comments', postId: post.id });
-			postStore.loadComments(activeAbortController.signal).catch(console.error);
+			postStore.loadComments(commentsAbortController.signal).catch(console.error);
 		}
 	} else if (type === OsEventTypeList.DOUBLE_CLICK_EVENT) {
 		// Also abort any pending (e.g. link preview update still in flight)
-		activeAbortController?.abort();
-		activeAbortController = null;
+		detailAbortController?.abort();
+		detailAbortController = null;
 		uiManager.goBack();
 	}
 }
@@ -387,13 +408,13 @@ function handleCommentsEvent(
 	const { comments, hasMoreComments, commentsLoading } = postStore.getState();
 	if (type === OsEventTypeList.SCROLL_BOTTOM_EVENT) {
 		commentView.onScrollDown(comments, hasMoreComments, commentsLoading, () =>
-			postStore.loadMoreComments(activeAbortController?.signal).catch(console.error),
+			postStore.loadMoreComments(commentsAbortController?.signal).catch(console.error),
 		);
 	} else if (type === OsEventTypeList.SCROLL_TOP_EVENT) {
 		commentView.onScrollUp(comments, hasMoreComments, commentsLoading);
 	} else if (type === OsEventTypeList.DOUBLE_CLICK_EVENT) {
-		activeAbortController?.abort();
-		activeAbortController = null;
+		commentsAbortController?.abort();
+		commentsAbortController = null;
 		commentView.reset();
 		uiManager.goBack();
 	}
@@ -495,7 +516,7 @@ async function render(bridge: Bridge, postStore: PostStore, uiManager: UIManager
 					uiManager.goBack();
 					return;
 				}
-				await views.detail.render(post, activeAbortController?.signal);
+				await views.detail.render(post, detailAbortController?.signal);
 				break;
 			}
 
