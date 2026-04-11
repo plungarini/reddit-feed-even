@@ -46,12 +46,57 @@ export async function fetchPreviewWithFallback(
 	providers: PreviewFetcher[],
 ): Promise<PreviewData | null> {
 	throwIfAborted(signal);
+	if (providers.length === 0) return null;
 
-	for (const provider of providers) {
-		const preview = await provider(url, signal);
-		if (preview) return preview;
-		throwIfAborted(signal);
-	}
+	const winnerAbortController = new AbortController();
+	const providerSignal = mergeAbortSignals([signal, winnerAbortController.signal]);
 
-	return null;
+	return await new Promise<PreviewData | null>((resolve, reject) => {
+		let pending = providers.length;
+		let settled = false;
+
+		const resolveIfDone = (preview: PreviewData | null) => {
+			if (settled) return;
+			settled = true;
+			if (preview) winnerAbortController.abort(new DOMException('Preview resolved elsewhere.', 'AbortError'));
+			resolve(preview);
+		};
+
+		const rejectOnce = (error: unknown) => {
+			if (settled) return;
+			settled = true;
+			if (!winnerAbortController.signal.aborted) {
+				winnerAbortController.abort(error);
+			}
+			reject(error);
+		};
+
+		const markMiss = () => {
+			if (settled) return;
+			pending -= 1;
+			if (pending === 0) resolveIfDone(null);
+		};
+
+		for (const provider of providers) {
+			void (async () => {
+				try {
+					const preview = await provider(url, providerSignal);
+					if (preview) {
+						resolveIfDone(preview);
+						return;
+					}
+					markMiss();
+				} catch (error) {
+					if (isAbortError(error, signal)) {
+						rejectOnce(error);
+						return;
+					}
+					if (winnerAbortController.signal.aborted && !signal?.aborted && isAbortError(error, providerSignal)) {
+						return;
+					}
+					rejectOnce(error);
+				}
+			})();
+		}
+	});
 }
