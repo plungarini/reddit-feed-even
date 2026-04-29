@@ -49,6 +49,12 @@ let menuSelecting = false; // guard against spurious menu rebuilds after selecti
 let detailAbortController: AbortController | null = null;
 let commentsAbortController: AbortController | null = null;
 
+// ─── Gesture cooldowns (G2 hardware can fire duplicate events per physical gesture) ───
+const SCROLL_COOLDOWN_MS = 300;
+const DOUBLE_CLICK_COOLDOWN_MS = 300;
+let lastScrollTime = 0;
+let lastDoubleClickTime = 0;
+
 type Bridge = Awaited<ReturnType<typeof waitForEvenAppBridge>>;
 
 // ─── Debug panel ────────────────────────────────────────────────────────────
@@ -218,6 +224,20 @@ async function main() {
 		// Resolve event type first so we can check before the guard
 		const type = event.textEvent?.eventType ?? event.sysEvent?.eventType ?? event.listEvent?.eventType;
 		const listEvent = event.listEvent;
+
+		// Hardware gesture cooldowns
+		const now = Date.now();
+		if (
+			type === OsEventTypeList.SCROLL_TOP_EVENT ||
+			type === OsEventTypeList.SCROLL_BOTTOM_EVENT
+		) {
+			if (now - lastScrollTime < SCROLL_COOLDOWN_MS) return;
+			lastScrollTime = now;
+		}
+		if (type === OsEventTypeList.DOUBLE_CLICK_EVENT) {
+			if (now - lastDoubleClickTime < DOUBLE_CLICK_COOLDOWN_MS) return;
+			lastDoubleClickTime = now;
+		}
 
 		const entry = uiManager.getCurrentEntry();
 		const view = entry.view;
