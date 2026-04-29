@@ -20,23 +20,6 @@ function buildPermalinkUrl(permalink: string): string {
 	return `https://www.reddit.com${permalink.startsWith('/') ? permalink : `/${permalink}`}`;
 }
 
-function handleRedditLinkClick(
-	event: React.MouseEvent<HTMLAnchorElement>,
-	permalink: string,
-): void {
-	if (!/Android/i.test(navigator.userAgent)) return;
-
-	try {
-		const webUrl = buildPermalinkUrl(permalink);
-		const path = webUrl.replace(/^https?:\/\/[^/]+/, '');
-		const intentUrl = `intent://www.reddit.com${path}#Intent;scheme=https;package=com.reddit.frontpage;S.browser_fallback_url=${encodeURIComponent(webUrl)};end`;
-		window.location.href = intentUrl;
-		event.preventDefault();
-	} catch {
-		// Intent navigation failed — let the default <a target="_blank"> click proceed.
-	}
-}
-
 function getMediaPreview(post: ActivePostPreview): { src: string; label: string } | null {
 	if (post.contentType === 'image') {
 		return { src: post.preview || post.url, label: 'Image preview' };
@@ -298,7 +281,6 @@ function PostPreview({ post, apiBaseUrl }: { post: ActivePostPreview; apiBaseUrl
 				href={buildPermalinkUrl(post.permalink)}
 				target="_blank"
 				rel="noopener noreferrer"
-				onClick={(e) => handleRedditLinkClick(e, post.permalink)}
 				className="inline-flex min-h-12 items-center justify-center rounded-[6px] bg-accent px-4 py-3 text-normal-title text-text-highlight transition-opacity hover:opacity-90"
 			>
 				Open on Reddit
