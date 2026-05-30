@@ -2,6 +2,8 @@
 
 > Reddit. Now literally in front of you.
 
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/plungarini/reddit-feed-even)
+
 A full-featured Reddit client for the [Even Realities Glasses](https://www.evenrealities.com) smart glasses. Browse your favourite feeds, read posts and comments, and switch endpoints — all hands-free on a heads-up display.
 
 ## What it does
